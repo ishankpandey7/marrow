@@ -1,0 +1,468 @@
+# ROADMAP.md
+
+Nine slices. Each one ends with something that works and is deployed — not a
+layer, not a "foundation". If a slice ends and there is nothing you can click,
+the slice was drawn wrong.
+
+Read `ARCHITECTURE.md` before starting any slice. Read the slice's **Gotcha**
+before writing code, not after. The gotchas are the specific things that get
+built wrong the first time.
+
+`AGENT-PROMPTS.md` in the repo root has the ready-to-paste prompt for every
+slice below, and says which agent runs it.
+
+**Tick a box only when the thing is done and verified.** A ticked box you did
+not check is worse than an unticked one, because next session it gets skipped.
+
+---
+
+## Slice 0 — skeleton, deployed
+
+**Agent:** Claude Code (needs real credentials and the Supabase CLI)
+**Files:** `package.json`, `lib/db/`, `lib/env.ts`, `lib/constants.ts`, `app/page.tsx`,
+`app/globals.css`, `.env.example`, `supabase/migrations/0001_init.sql`,
+`.github/workflows/ci.yml`, `sentry.*.config.ts`, `next.config.ts`
+**New dependencies (pre-approved):** `@supabase/supabase-js`, `@supabase/ssr`,
+`server-only`, `@sentry/nextjs`, `prettier`, `vitest`
+
+### Done when
+
+- [x] Next.js 16 + TypeScript strict + Tailwind v4 scaffolded, `npm run dev` serves.
+- [x] `docs/ARCHITECTURE.md`, `docs/SCHEMA.sql`, `docs/ROADMAP.md` on disk.
+- [x] `supabase/migrations/0001_init.sql` exists and matches `SCHEMA.sql`.
+- [ ] Migration applied to the real Supabase project.
+- [ ] `select tablename, rowsecurity from pg_tables where schemaname='public'`
+      run against the real database, every row `t`, output pasted into this file
+      under Notes from the field.
+- [x] `lib/db/` exports three clients: browser (anon), server (anon + cookies),
+      service-role. The service-role module imports `server-only`. (Three files,
+      not one — see the decisions log in ARCHITECTURE §13.)
+- [x] Importing the service-role client from a `'use client'` file fails the build.
+- [x] `.env.example` lists every variable in ARCHITECTURE §8, all values empty.
+- [x] `.env.local` is gitignored; `.env.example` is not.
+- [x] `lib/env.ts` throws at import time, naming the variable, when a required
+      Supabase env var is missing. No placeholder fallbacks anywhere.
+- [x] `npm run build` succeeds from a clean checkout with **no** credentials, so
+      CI and a sandboxed agent can both verify their own work.
+- [x] CI asserts the RLS invariant without a database: `test/schema.test.ts`
+      fails if a table is added without `enable row level security` or without a
+      policy, and if `docs/SCHEMA.sql` drifts from the applied migration.
+- [x] `test/env-example.test.ts` fails if the code reads an environment variable
+      that `.env.example` does not document, or if `.env.example` ever contains
+      a value.
+- [x] Landing page: dark, minimal, product name and one line of what it does.
+- [ ] Sentry configured for client + server + edge, `/api/debug-sentry` throws,
+      and the error appears in the Sentry dashboard.
+- [x] Scripts: `dev`, `build`, `start`, `typecheck`, `lint`, `format`, `test`.
+- [x] `.github/workflows/ci.yml` runs install, typecheck, lint, test, build on PR.
+- [ ] Pushed to `main` on GitHub.
+- [ ] Deployed on Vercel, custom domain attached, HTTPS working.
+
+### Gotcha
+
+`NEXT_PUBLIC_` is not a namespace. Anything behind it is compiled into the
+JavaScript bundle every visitor downloads. Put `SUPABASE_SERVICE_ROLE_KEY`
+behind it once and you have published a key that reads every user's data and
+bypasses RLS entirely. The `server-only` import in `lib/db/service.ts` is the
+guard — verify it actually fails the build rather than assuming it does.
+
+Second: `/api/debug-sentry` is a route that throws on request. **Delete it in
+Slice 8.** It is listed there as a checkbox.
+
+---
+
+## Slice 1 — auth, save a URL, list view
+
+**Agent:** Either. Recommend Claude Code — it needs a live Supabase Auth project
+to test the magic-link round trip.
+**Files:** `app/auth/`, `app/(app)/layout.tsx`, `app/(app)/inbox/page.tsx`,
+`app/api/save/route.ts`, `lib/canonical.ts`, `lib/canonical.test.ts`,
+`components/save-form.tsx`, `components/item-row.tsx`, `middleware.ts`
+**New dependencies:** none expected.
+
+### Done when
+
+- [ ] Magic-link sign-in works end to end: enter email, receive mail, click,
+      land signed in. No password, no OAuth.
+- [ ] `middleware.ts` refreshes the session cookie; a signed-in user is not
+      logged out after an hour of use.
+- [ ] Server code uses `supabase.auth.getUser()`, never `getSession()`.
+- [ ] Visiting `/inbox` signed out redirects to sign-in and returns to `/inbox`
+      after the link is clicked.
+- [ ] `lib/canonical.ts` is pure — no network, no env, no database — and has
+      tests: tracking params stripped, query order normalised, fragment dropped,
+      default port dropped, trailing slash handled, hash is stable across all of
+      them.
+- [ ] Save form accepts a URL, validates it client-side, and posts to
+      `/api/save`.
+- [ ] `/api/save` calls the `save_item` RPC. It does not hand-roll the upsert.
+- [ ] The saved item appears in the list immediately, in `pending` state.
+- [ ] The list renders on mobile first and looks deliberate at 375 px.
+- [ ] Empty state tells you what to do next, with an actual affordance. Not the
+      words "No items".
+- [ ] Signing in as a second user shows none of the first user's items.
+
+### Gotcha — the re-save conflict case. Not optional.
+
+Save `https://example.com/post?utm_source=twitter`. Archive it. Now save
+`https://example.com/post`. Both canonicalise to the same `url_hash`, and
+`items` has a unique index on `(user_id, url_hash)` that deliberately spans
+archived and soft-deleted rows.
+
+The naive insert throws a 23505 unique violation and the user sees a 500 for
+what should be a no-op. The naive fix — catch the violation and update — is a
+race: two taps of the extension button and both branches insert.
+
+The correct behaviour, which `public.save_item` in `SCHEMA.sql` already
+implements as a single atomic statement:
+
+- Re-saving an existing item is **not an error**. It returns the existing item.
+- It clears `archived_at` and `deleted_at` — the item comes back to the inbox.
+- It leaves `read_progress`, `read_at`, `favourite`, tags and highlights
+  **untouched**. Re-saving something is not "forget everything about it".
+- It re-queues extraction only if `status <> 'ready'`. An article you already
+  have is not re-fetched.
+
+Test all four of those. The one that gets missed is the third: someone writes
+an upsert that resets the row and quietly destroys the user's reading position.
+
+---
+
+## Slice 2 — extraction pipeline
+
+**Agent:** Claude Code. Security-critical, and needs real network access to
+verify against live URLs.
+**Files:** `lib/fetcher.ts`, `lib/fetcher.test.ts`, `lib/extract.ts`,
+`lib/extract.test.ts`, `lib/sanitize.ts`, `lib/sanitize.test.ts`,
+`app/api/extract/route.ts`, `test/fixtures/`
+**New dependencies (pre-approved):** `@mozilla/readability`, `linkedom`,
+`sanitize-html`, `@types/sanitize-html`
+
+### Done when
+
+- [ ] `lib/fetcher.ts` implements **every** guard in ARCHITECTURE §5. Not a
+      subset.
+- [ ] Its tests were written before the implementation and cover, at minimum:
+      private IPv4 ranges; IPv6 loopback and ULA; an IPv4-mapped IPv6 address;
+      a redirect from a public host to `127.0.0.1`; a redirect chain longer
+      than 3; a body exceeding 5 MB; a host that times out; a non-HTML
+      content type; a URL with embedded credentials.
+- [ ] No test touches the network. DNS and the HTTP agent are injected.
+- [ ] Every route that calls the fetcher declares `runtime = 'nodejs'`.
+- [ ] `lib/sanitize.ts` has an XSS corpus that must not survive: `<script>`,
+      `onerror=`, `javascript:` href, `data:text/html` href, `<iframe>`,
+      `<svg onload>`, `<form>`, a `style` with `expression()`.
+- [ ] `lib/extract.ts` produces title, author, site, publish date, lead image,
+      lang, word count and reading time from HTML fixtures, offline.
+- [ ] All ten `fail_reason` values are reachable, and each has user-facing copy.
+- [ ] A failed extraction still leaves a saved item with its URL and a usable
+      title. Never a ghost row, never a spinner that never resolves.
+- [ ] Run against four live URLs and record what happened for each in Notes
+      from the field: a normal news article, a hard paywall, a JavaScript-only
+      SPA, and a URL that 404s. All four must fail gracefully or succeed
+      cleanly — no crash, no hang, no leaked internal error.
+
+### Gotcha
+
+The redirect case is the one that gets missed. Validating the URL the user typed
+and then calling `fetch` with `redirect: 'follow'` means the runtime follows a
+302 to `http://169.254.169.254/latest/meta-data/` on your behalf, and every
+guard you wrote is bypassed by a single header on someone else's server. Set
+`redirect: 'manual'` and re-run the full check on each hop.
+
+Second: `Content-Length` is supplied by the party you are defending against. A
+5 MB cap enforced by reading the header is not a cap. Count bytes as they
+arrive and abort mid-stream.
+
+Third: do not tell the user _why_ a URL was blocked. "Blocked: connection
+refused to 10.0.0.7" is a working port scanner with a nice UI.
+
+---
+
+## Slice 3 — the reading view
+
+**Agent:** Codex. Self-contained UI over fixtures, no credentials needed.
+**Files:** `app/(app)/read/[id]/page.tsx`, `components/reader/`,
+`app/globals.css`, `lib/reading.ts`, `lib/reading.test.ts`
+**New dependencies:** none expected. Ask before adding a typography library.
+
+### Done when
+
+- [ ] The article renders server-side. Extracted HTML never enters the client
+      bundle.
+- [ ] Typography is actually good: a measure of 60–75 characters, generous line
+      height, real vertical rhythm between block elements. Read a 3,000-word
+      article on a phone and it should be pleasant.
+- [ ] Font size, family (serif / sans) and theme (light / dark / sepia) are
+      user-adjustable and persist to `profiles.settings`.
+- [ ] Theme follows `prefers-color-scheme` until the user chooses; an explicit
+      choice wins and persists.
+- [ ] Reading progress is tracked as you scroll, throttled, and written back to
+      `items.read_progress`. Re-opening restores the position.
+- [ ] Images lazy-load, are width-constrained, and never cause layout shift.
+- [ ] Code blocks, blockquotes, tables and figures all have deliberate styles.
+      Tables scroll horizontally inside their own container rather than making
+      the page scroll.
+- [ ] Every `fail_reason` renders its own designed state with the copy from
+      ARCHITECTURE §6 and a sensible action — retry, or open the original.
+- [ ] Keyboard: `j`/`k` scroll, `Esc` back to the list.
+- [ ] Works with JavaScript disabled, at least to the extent of showing the
+      article text.
+
+### Gotcha
+
+The extracted HTML is attacker-controlled. It arrives sanitised, but the
+renderer must not undo that: no `dangerouslySetInnerHTML` on anything that has
+not been through `lib/sanitize.ts`, and no "just this once" exception for
+embeds. If a publisher's markup looks broken, fix the sanitiser allowlist
+deliberately and add a test — do not widen it in the component.
+
+Second: reading progress written on every scroll event will hammer the database
+and burn a rate limit. Throttle it, and flush on `visibilitychange` so closing
+the tab does not lose the position.
+
+---
+
+## Slice 4 — organise: tags, archive, favourites, filters
+
+**Agent:** Codex. Pure UI plus straightforward queries.
+**Files:** `app/(app)/inbox/page.tsx`, `components/tag-input.tsx`,
+`components/filter-bar.tsx`, `lib/tags.ts`, `lib/tags.test.ts`,
+`app/(app)/actions.ts`
+**New dependencies:** none expected.
+
+### Done when
+
+- [ ] Archive, un-archive, favourite and delete all work from the list.
+- [ ] Every one of them is optimistic: the row changes instantly and reconciles
+      on the server response, with a rollback and a visible message on failure.
+- [ ] Delete is a soft delete and offers undo for at least 10 seconds.
+- [ ] Tags: create by typing, autocomplete from existing tags, remove, and
+      rename. `lib/tags.ts` slug normalisation is pure and tested — two tags
+      differing only by case or spacing are one tag.
+- [ ] Filter by tag, by state (inbox / archive / favourites), and by read
+      status. Filters are in the URL and survive a refresh and a share.
+- [ ] Bulk select with shift-click ranges, then bulk archive or tag.
+- [ ] Keyboard shortcuts: `e` archive, `f` favourite, `#` delete, `t` tag,
+      `/` focus search, `?` shows the shortcut sheet.
+- [ ] Every list query is served by one of the partial indexes in `SCHEMA.sql`.
+      Check with `explain analyze`; a sequential scan on `items` is a bug.
+- [ ] Pagination or infinite scroll that holds up at 1,000 items.
+
+### Gotcha
+
+Optimistic UI that never reconciles is a lie. If the server rejects an archive,
+the row must come back and the user must be told. The common failure is a
+`catch` that logs and moves on, leaving the UI showing a state the database does
+not have — and the user finds out when they refresh tomorrow.
+
+Second: tag autocomplete that queries on every keystroke without debouncing
+will fire a request per character. Debounce, and cache the user's tag list
+client-side — it is small and changes rarely.
+
+---
+
+## Slice 5 — search
+
+**Agent:** Claude Code. Needs a live database with real rows to tune ranking.
+**Files:** `app/(app)/search/page.tsx`, `lib/search.ts`, `lib/search.test.ts`,
+`supabase/migrations/0002_search.sql`, `components/search-input.tsx`
+
+### Done when
+
+- [ ] Full-text search across title, excerpt, author, site name and body, using
+      the `search_tsv` columns and GIN indexes already in the schema.
+- [ ] Ranking is weighted: a title match outranks a body match. Verified with
+      real saved articles, not with three fixtures.
+- [ ] The query parser is pure and tested: quoted phrases, `-exclusion`, and
+      `tag:foo` are understood, and a user typing `?` or `&` or an unbalanced
+      quote does not produce a Postgres syntax error. Never interpolate user
+      input into `to_tsquery`; use `websearch_to_tsquery`.
+- [ ] Result snippets show the match in context with the term highlighted, via
+      `ts_headline`.
+- [ ] Search combines with the Slice 4 filters rather than replacing them.
+- [ ] Empty result state suggests something useful.
+- [ ] `explain analyze` on a search over 1,000+ items shows the GIN index in use
+      and runs under 100 ms. Paste the plan into Notes from the field.
+- [ ] Searching returns only your own items. Verified with two accounts.
+
+### Gotcha
+
+`to_tsquery` throws on malformed input, and user input is always malformed
+eventually. `websearch_to_tsquery` accepts anything a person would type into a
+search box and never throws. Use it.
+
+Second: a GIN index is only used if the query shape matches. `where search_tsv
+@@ query` uses it; wrapping the column in a function does not. Check the plan
+rather than trusting that the index exists.
+
+---
+
+## Slice 6 — browser extension
+
+**Agent:** Codex. Self-contained, unit-testable, no repo credentials required.
+**Files:** `extension/` (own `package.json`), `extension/manifest.json`,
+`extension/background.ts`, `extension/popup/`, `app/api/save/route.ts` (CORS +
+token), `app/(app)/settings/extension/page.tsx`
+
+### Done when
+
+- [ ] Manifest V3. Works in Chrome and Firefox from the same source.
+- [ ] One click on the toolbar icon saves the current tab. Success and failure
+      are both visible without opening the popup — badge or icon state.
+- [ ] Context menu: "Save link to Marrow" on any link.
+- [ ] Keyboard shortcut, user-rebindable.
+- [ ] Auth is a long-lived token generated in the web app settings page, pasted
+      once into the extension. No cookie sharing, no OAuth flow.
+- [ ] The token is stored in `chrome.storage.local`, never in `localStorage`,
+      and is revocable from the web app.
+- [ ] `/api/save` accepts the token, sets a tight CORS policy, and rate-limits
+      per user exactly as the web path does.
+- [ ] Saving the same page twice is a no-op that reports "already saved",
+      exercising the Slice 1 gotcha through a second entry point.
+- [ ] Offline: the save is queued and retried when the network returns.
+- [ ] `extension/` builds with its own script and is not bundled into the
+      Next.js app.
+
+### Gotcha
+
+The extension's host permissions are the whole security story. Requesting
+`<all_urls>` gets the extension rejected from review and is not needed: it only
+needs `activeTab` — the current tab's URL, at the moment the user clicks — plus
+the origin of your own API. Ask for the minimum, and be able to explain each
+permission in one sentence in the store listing.
+
+Second: an extension token is a bearer credential sitting in a browser profile.
+Scope it to save-only. It must not be able to read the user's list, delete
+anything, or change settings.
+
+---
+
+## Slice 7 — background jobs, retries, limits
+
+**Agent:** Claude Code. Needs real cron, real Sentry, and a real database.
+**Files:** `app/api/cron/extract/route.ts`, `app/api/cron/purge/route.ts`,
+`lib/queue.ts`, `lib/rate-limit.ts`, `lib/rate-limit.test.ts`, `vercel.json`,
+`supabase/migrations/0003_jobs.sql`
+
+### Done when
+
+- [ ] `/api/cron/extract` claims a batch with `for update skip locked` and
+      processes it. Two overlapping invocations never process the same job.
+- [ ] Retries: 3 attempts, backoff 1 / 5 / 25 minutes, and **only** for
+      `unreachable` and `server_error`. A 404 is never retried.
+- [ ] A job stuck in `running` with a stale `locked_at` is reclaimed.
+- [ ] `/api/cron/purge` hard-deletes items soft-deleted more than 30 days ago.
+- [ ] Every cron route rejects a request without `Authorization: Bearer
+  ${CRON_SECRET}` — verified by calling it from outside with curl and
+      getting a 401.
+- [ ] `vercel.json` schedules both jobs and they are visible as running in the
+      Vercel dashboard.
+- [ ] Rate limit on `/api/save`, counted in Postgres per user, with a documented
+      limit and a `Retry-After` header on rejection. `lib/rate-limit.ts` is
+      tested with an injected clock, not with `setTimeout`.
+- [ ] A save while over the limit gives a clear message, not a generic 500.
+- [ ] Extraction failures reach Sentry with the URL and the failure code.
+- [ ] `blocked_url` events are logged and countable — a spike means someone is
+      probing the fetcher.
+
+### Gotcha
+
+`for update skip locked` is the whole design. Without it, two cron invocations
+that overlap — and on a one-minute schedule with a slow fetch, they will —
+process the same job, fetch the same URL twice, and race on the write. With it,
+the second invocation simply sees fewer rows.
+
+Second: a cron route with no auth is a public endpoint that anyone can invoke as
+fast as they like. Test the 401 by actually calling it from outside.
+
+---
+
+## Slice 8 — hardening and launch
+
+**Agent:** Either.
+**Files:** across the app; plus `app/(marketing)/`, `app/robots.ts`,
+`app/sitemap.ts`, `app/manifest.ts`, `next.config.ts`
+
+### Done when
+
+- [ ] **`/api/debug-sentry` is deleted.** (Added in Slice 0 for exactly this.)
+- [ ] Content-Security-Policy set, with no `unsafe-inline` for scripts. Verified
+      on the deployed site with the console open and no violations.
+- [ ] Security headers: HSTS, `X-Content-Type-Options`, `Referrer-Policy`,
+      `X-Frame-Options` / `frame-ancestors`.
+- [ ] Accessibility: axe clean on the list, the reader and the settings pages.
+      Keyboard-only navigation works throughout; focus is visible and never
+      trapped.
+- [ ] Colour contrast passes AA in every theme, including sepia.
+- [ ] Lighthouse: performance and accessibility both above 90 on mobile for the
+      list and the reader.
+- [ ] Every route has a designed loading state and a designed error boundary.
+      No raw Next.js error pages in production.
+- [ ] 404 and 500 pages are designed.
+- [ ] Export: download everything as JSON, including content and tags.
+- [ ] Account deletion actually deletes, verified by checking the tables.
+- [ ] Privacy policy and terms exist and are honest about what is stored.
+- [ ] PWA: installable, correct icons, offline shell.
+- [ ] `robots.txt` and `sitemap.xml` for the marketing pages only. The app is
+      `noindex`.
+- [ ] README explains how to run it locally from a clean checkout, and that
+      procedure has been followed on a clean checkout.
+
+### Gotcha
+
+Adding a CSP at the end always breaks something that has been silently relying
+on an inline script or style. Next.js needs a nonce for its own inline scripts;
+budget real time for this and test on the deployed site, not just locally —
+`next dev` and `next start` do not behave identically here.
+
+Second: "account deletion" that leaves rows in `item_content` because the
+cascade was never tested is the kind of thing that turns into a compliance
+problem. Delete an account and then query every table for its `user_id`.
+
+---
+
+## Notes from the field
+
+Append surprises here as they happen: parser quirks, provider limits, deploy
+traps. Be specific and date each entry. Future-you has no memory of this
+session, and the whole value of this section is that it records the things that
+are true but not written down anywhere else.
+
+### 2026-09-06 — Slice 0 setup, environment facts
+
+- `create-next-app@latest` now scaffolds **Next 16.3.4 / React 19.2.8**, not 15.
+  Kept it. Recorded in ARCHITECTURE §2 and §13.
+- Node 24.19 is what is installed locally. The scaffold pins
+  `@types/node@^20`, which **conflicts with Vitest 5** — Vitest wants
+  `^22 || >=24`. `npm i -D vitest` fails with ERESOLVE until you bump
+  `@types/node` to `^24`. Do that rather than reaching for `--legacy-peer-deps`.
+- npm 11 gates postinstall scripts. `@sentry/cli` and `unrs-resolver` are held
+  back with an `allow-scripts` warning. Harmless until you set
+  `SENTRY_AUTH_TOKEN` and want source-map upload, which needs the `sentry-cli`
+  binary that postinstall fetches. Run `npm approve-scripts @sentry/cli` when
+  you get to that.
+- The project directory is `C:\Users\LOQ\kuch bada` — **it has a space in it**.
+  `create-next-app .` refuses to scaffold in place because npm package names
+  cannot contain spaces; the app was scaffolded elsewhere as `marrow` and
+  copied in. If any tool behaves strangely, the space is the first suspect.
+- Tailwind v4 has no `tailwind.config.js`. Theme tokens go in `app/globals.css`
+  under `@theme`. Do not create the config file expecting it to be read.
+- The Next.js scaffold writes `AGENTS.md` (and a `CLAUDE.md` that just includes
+  it) and **re-adds its own block on every `next dev`**. Do not fight it —
+  house rules were appended below that block, not in place of it.
+- Next 16 **removed the `eslint` key from `next.config.ts`** along with
+  `next lint`. Leaving `eslint: { ignoreDuringBuilds: false }` in the config is
+  not ignored: it is a TypeScript error against `NextConfig` and the build
+  fails. Linting is its own script and its own CI step now.
+- `vitest.config.ts` is loaded as CommonJS and warns about ESM syntax. Renaming
+  it to `vitest.config.mts` fixes it cleanly; setting `"type": "module"` in
+  package.json would drag the whole project along for no reason.
+- `*.sql` is in `.prettierignore` on purpose. Prettier reformatting
+  `docs/SCHEMA.sql` but not `supabase/migrations/0001_init.sql` would break the
+  byte-identity test between them.
+- `next build` **does not need any environment variable**, and it should stay
+  that way: `lib/env.ts` validates at module load, but nothing on the public
+  landing path imports it. That is what lets CI build without secrets. If a
+  build ever starts requiring a key, something on a static route has started
+  importing the database layer.
