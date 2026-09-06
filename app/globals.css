@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+/*
+ * Tailwind v4 has no tailwind.config.js. Theme tokens are declared here and
+ * become utilities automatically: --color-ink gives you text-ink, bg-ink,
+ * border-ink, and so on.
+ *
+ * The palette is warm rather than neutral-grey on purpose. This is a reading
+ * app; pure #000 on #fff is the wrong starting point for something people look
+ * at for twenty minutes. Slice 3 adds the light and sepia themes — until then
+ * the app commits to one look.
+ */
+@theme {
+  --color-ground: #0c0b0a;
+  --color-ground-raised: #141210;
+  --color-edge: #262220;
+
+  --color-ink: #ece6dc;
+  --color-ink-dim: #9c9287;
+  --color-ink-faint: #665e56;
+
+  --color-accent: #d8a15c;
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-serif:
+    ui-serif, Georgia, "Iowan Old Style", "Times New Roman", Times, serif;
+}
+
+html {
+  /* Tells the browser to render form controls and scrollbars dark. */
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--color-ground);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background-color: var(--color-accent);
+  color: var(--color-ground);
+}
+
+/* Visible focus is not optional. Never remove this without replacing it. */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
