@@ -1,0 +1,15 @@
+# Normalise line endings in the repository to LF regardless of who commits.
+#
+# Windows git has core.autocrlf=true by default, so without this a file
+# committed from Windows and one committed from CI differ on every line. That
+# turns a one-line change into a whole-file diff and makes review useless.
+#
+# It also matters for test/schema.test.ts, which asserts docs/SCHEMA.sql and
+# supabase/migrations/0001_init.sql are byte-identical.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary

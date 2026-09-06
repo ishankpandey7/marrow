@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A second push to the same branch cancels the first run. Waiting on CI for a
+# commit that has already been replaced is time nobody gets back.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # ci, not install: it installs exactly what the lockfile says and fails if
+      # package.json and the lockfile disagree.
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - run: npm run lint
+
+      - run: npm test
+
+      # No secrets are provided to this step, on purpose. The build must succeed
+      # from a clean checkout with no credentials — that is what makes it
+      # possible for a contributor, or an agent working in a sandbox, to verify
+      # their own work. If a build starts needing a key, that is a design
+      # problem to fix rather than a secret to add here.
+      - run: npm run build
