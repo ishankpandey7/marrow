@@ -28,7 +28,7 @@ export async function createServerSupabase() {
           }
         } catch {
           // Server Components cannot set cookies. This is expected and not an
-          // error: middleware.ts refreshes the session on every request, so the
+          // error: proxy.ts refreshes the session on every request, so the
           // write that fails here has already happened there.
         }
       },

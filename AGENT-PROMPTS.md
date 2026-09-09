@@ -150,7 +150,7 @@ including the gotcha at the bottom. The re-save conflict case is not optional â€
 handle it and test all four of its behaviours.
 
 Work in: app/auth/, app/(app)/layout.tsx, app/(app)/inbox/page.tsx,
-app/api/save/route.ts, lib/canonical.ts, middleware.ts, components/.
+app/api/save/route.ts, lib/canonical.ts, proxy.ts, components/.
 
 Build exactly the checklist items under Slice 1. Design notes the docs do not
 capture:

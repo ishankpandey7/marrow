@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { APP_NAME, APP_TAGLINE } from "@/lib/constants";
 
 const PROMISES = [
@@ -35,8 +37,17 @@ export default function LandingPage() {
         ))}
       </ul>
 
-      <footer className="mt-16 text-xs text-ink-faint">
-        Building in the open. Nothing to sign up for yet.
+      <footer className="mt-16 text-xs">
+        <Link
+          href="/auth/sign-in"
+          className="text-accent underline underline-offset-4"
+        >
+          Sign in
+        </Link>
+        <span className="text-ink-faint">
+          {" "}
+          — no password, just an email link.
+        </span>
       </footer>
     </main>
   );
