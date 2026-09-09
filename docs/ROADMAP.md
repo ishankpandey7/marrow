@@ -52,7 +52,10 @@ not check is worse than an unticked one, because next session it gets skipped.
       a value.
 - [x] Landing page: dark, minimal, product name and one line of what it does.
 - [ ] Sentry configured for client + server + edge, `/api/debug-sentry` throws,
-      and the error appears in the Sentry dashboard.
+      and the error appears in the Sentry dashboard. Wiring is fixed and
+      verified locally (Sentry code and the DSN are in the client bundle; the
+      production build throws and logs the error); the dashboard sighting is
+      the one step left.
 - [x] Scripts: `dev`, `build`, `start`, `typecheck`, `lint`, `format`, `test`.
 - [x] `.github/workflows/ci.yml` runs install, typecheck, lint, test, build on PR.
 - [x] Pushed to `main` on GitHub (`ishankpandey7/marrow`, private).
@@ -485,6 +488,32 @@ authenticated`, so an anonymous reader sees nothing); and `save_item()` called
   with valid arguments but no session returns `401 / 42501 / not authenticated`,
   which proves in one call that the function exists, its signature matches what
   the app will call, and its `auth.uid()` guard fires.
+
+- **2026-09-09 — Sentry was silently disabled, and the bug was ours.**
+  `next.config.ts` applied `withSentryConfig` only when `SENTRY_ORG` and
+  `SENTRY_PROJECT` were set. Those two are needed **only to upload source
+  maps**, but the wrapper is what pulls `instrumentation-client.ts` into the
+  client bundle and configures server instrumentation. With them unset, the SDK
+  was inert while every other signal looked healthy: the DSN was correct,
+  `/api/debug-sentry` returned a textbook 500, and the Sentry project stayed
+  empty. Wrap unconditionally; gate only the upload, via
+  `sourcemaps.disable`.
+
+  The cheap way to tell the difference: `grep -rl sentry .next/static/chunks/*.js`
+  after a build. If the client bundle has no Sentry in it, the wrapper is not
+  running, and no amount of DSN-checking will help.
+
+- **Two Sentry deprecations on 10.x.** Import `withSentryConfig` from
+  `@sentry/nextjs/config`, not `@sentry/nextjs`. Drop `disableLogger` — its
+  replacement (`webpack.treeshake.removeDebugLogging`) does nothing under
+  Turbopack, which is what Next 16 builds with.
+
+- **`kill` on an `npm start` leaves the server running.** It kills the npm
+  wrapper, not the node child, and the next test then hits a stale build and
+  proves nothing. On Windows:
+  `Get-NetTCPConnection -LocalPort 3000 -State Listen` to find the real PID.
+  Verify which build is being served by matching the chunk hash in the HTML
+  against the one on disk.
 
 - **Applying the schema needed no database password.** Supabase SQL Editor,
   paste `docs/SCHEMA.sql`, Run. Worth knowing because `supabase db push` needs a
