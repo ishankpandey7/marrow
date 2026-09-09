@@ -16,6 +16,33 @@ not check is worse than an unticked one, because next session it gets skipped.
 
 ---
 
+## Where things stand
+
+Kept current at the end of every session. Read this first; it is the handoff.
+
+**Last updated: 2026-09-09, end of Slice 1.**
+
+- **Done:** Slice 0 complete. Slice 1 complete at 10 of 11 — magic-link
+  sign-in, saving a URL, and the list all work on the deployed site, confirmed
+  by hand.
+- **Half-done:** one Slice 1 box, and only because of elapsed time. A Supabase
+  access token lasts an hour, so the proxy's refresh path cannot be proven in
+  the same sitting as the sign-in that created it. Open `/inbox` more than an
+  hour after signing in; if it loads without a fresh sign-in, tick it. This
+  blocks nothing.
+- **Next:** Slice 2, the extraction pipeline. `lib/fetcher.ts` first, its tests
+  before its implementation, every guard in ARCHITECTURE §5.
+- **Needed from the human:** nothing. Accounts, keys, schema and deploy are all
+  in place.
+- **Carrying forward, both tracked below:** `lib/types.ts` is hand-written and
+  must be replaced by generated types once `SUPABASE_DB_URL` works; and the
+  first `supabase db push` will need `migration repair`, because the schema was
+  applied through the SQL Editor.
+
+**Live:** <https://marrow-bice.vercel.app> · **Repo:** `ishankpandey7/marrow`
+
+---
+
 ## Slice 0 — skeleton, deployed
 
 **Agent:** Claude Code (needs real credentials and the Supabase CLI)
