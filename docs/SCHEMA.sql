@@ -1,8 +1,10 @@
 -- ============================================================================
 -- Marrow — schema
 --
--- Applied as supabase/migrations/0001_init.sql. Forward-only: once a migration
--- has run against a real database, never edit it. Write another one.
+-- The schema as it currently stands. Migrations live in supabase/migrations/
+-- and are forward-only: once one has run against a real database, never edit
+-- it, write another. This file is the readable end state, so it carries every
+-- correction those later migrations made — it is not a copy of 0001.
 --
 -- Two rules govern this file:
 --
@@ -524,13 +526,18 @@ begin
       -- Re-queue extraction only if we never got the content. A ready item
       -- keeps its body, its excerpt and its read position. Deliberately NOT
       -- touching read_progress, read_at, favourite, or any tag.
+      -- Casts are load-bearing. Without them both branches are unknown-type
+      -- literals, the CASE resolves to text, and assigning text to an enum
+      -- column fails at runtime with 42804 — but only on a conflict, because a
+      -- first save takes the INSERT path and never evaluates this. Fixed in
+      -- 0002_save_item_enum_cast.sql.
       status      = case
-                      when public.items.status = 'ready' then 'ready'
-                      else 'pending'
+                      when items.status = 'ready' then 'ready'::public.item_status
+                      else 'pending'::public.item_status
                     end,
       fail_reason = case
-                      when public.items.status = 'ready' then public.items.fail_reason
-                      else null
+                      when items.status = 'ready' then items.fail_reason
+                      else null::public.fail_reason
                     end
   returning * into v_item;
 
