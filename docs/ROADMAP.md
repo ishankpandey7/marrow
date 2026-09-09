@@ -86,12 +86,16 @@ to test the magic-link round trip.
 
 ### Done when
 
-- [ ] Magic-link sign-in works end to end: enter email, receive mail, click,
-      land signed in. No password, no OAuth. Needs a real inbox — see the note
-      on generateLink below for why it cannot be automated.
+- [x] Magic-link sign-in works end to end: enter email, receive mail, click,
+      land signed in. No password, no OAuth. Confirmed by hand on the deployed
+      site, including the re-save path: a saved link shows "Fetching the
+      article", and saving it again reports it was brought back to the top
+      rather than erroring or duplicating.
 - [ ] `proxy.ts` (Next 16 renamed `middleware.ts`) refreshes the session
-      cookie; a signed-in user is not logged out after an hour of use. Wired
-      and building; confirming it takes an hour of elapsed time.
+      cookie; a signed-in user is not logged out after an hour of use. Wired,
+      building, and signing in works — but a Supabase access token lasts an
+      hour, so the refresh path cannot be proven in the same sitting. Tick this
+      the first time `/inbox` opens without a fresh sign-in on a later day.
 - [x] Server code uses `supabase.auth.getUser()`, never `getSession()`.
 - [x] Visiting `/inbox` signed out redirects to sign-in and returns to `/inbox`
       after the link is clicked.
