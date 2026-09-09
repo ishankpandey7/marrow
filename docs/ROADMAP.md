@@ -51,11 +51,10 @@ not check is worse than an unticked one, because next session it gets skipped.
       that `.env.example` does not document, or if `.env.example` ever contains
       a value.
 - [x] Landing page: dark, minimal, product name and one line of what it does.
-- [ ] Sentry configured for client + server + edge, `/api/debug-sentry` throws,
-      and the error appears in the Sentry dashboard. Wiring is fixed and
-      verified locally (Sentry code and the DSN are in the client bundle; the
-      production build throws and logs the error); the dashboard sighting is
-      the one step left.
+- [x] Sentry configured for client + server + edge, `/api/debug-sentry` throws,
+      and the error appears in the Sentry dashboard. Confirmed on the deployed
+      site: the live client bundle carries the SDK and the DSN, and the error
+      landed in Sentry.
 - [x] Scripts: `dev`, `build`, `start`, `typecheck`, `lint`, `format`, `test`.
 - [x] `.github/workflows/ci.yml` runs install, typecheck, lint, test, build on PR.
 - [x] Pushed to `main` on GitHub (`ishankpandey7/marrow`, private).
@@ -502,6 +501,11 @@ authenticated`, so an anonymous reader sees nothing); and `save_item()` called
   The cheap way to tell the difference: `grep -rl sentry .next/static/chunks/*.js`
   after a build. If the client bundle has no Sentry in it, the wrapper is not
   running, and no amount of DSN-checking will help.
+
+  On the deployed site the same check works, but the path is different: Vercel
+  serves chunks from `/_next/static/immutable/chunks/`, not
+  `/_next/static/chunks/` as a local build does. Grepping the local path against
+  production returns nothing and looks exactly like "Sentry is missing".
 
 - **Two Sentry deprecations on 10.x.** Import `withSentryConfig` from
   `@sentry/nextjs/config`, not `@sentry/nextjs`. Drop `disableLogger` — its
