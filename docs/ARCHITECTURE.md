@@ -86,6 +86,8 @@ app/
   auth/                   Magic-link callback and sign-out.
   globals.css
   layout.tsx
+proxy.ts                  Refreshes the session on every request. Next 16's
+                          name for what used to be middleware.ts.
 lib/
   constants.ts            APP_NAME and the product copy. No logic.
   env.ts                  Environment access and validation. See §8.
@@ -93,11 +95,15 @@ lib/
     browser.ts            Anon client for Client Components.
     server.ts             Anon client + session cookies, for the server.
     service.ts            Service-role client. Imports server-only. See §9.
+    proxy.ts              Anon client for proxy.ts, plus the response it
+                          writes refreshed cookies onto.
   canonical.ts            URL normalisation and the dedupe hash. Pure.
+  safe-next.ts            Post-sign-in redirect guard. Pure. See §9.
   fetcher.ts              The SSRF boundary. Security-critical. See §5.
   extract.ts              HTML to article. Pure given a fetch result.
   sanitize.ts             The allowlist that untrusted HTML must survive.
-  types.ts                Shared types. Database types are generated, not written.
+  types.ts                Shared types. Database types should be generated;
+                          they are hand-written until SUPABASE_DB_URL works.
 components/
 supabase/
   migrations/             Numbered, forward-only. Never edit an applied one.
@@ -351,11 +357,20 @@ a convention. Putting a secret behind it publishes the secret.
 | `EXTENSION_TOKEN_SECRET`        | **NO** | Slice 6     | `openssl rand -hex 32`. Signs the extension's save token.                                                                                     |
 | `RESEND_API_KEY`                | **NO** | Slice 7     | resend.com. Only needed if the digest email ships; the slice degrades gracefully without it.                                                  |
 
-**Absent-key behaviour.** Missing Supabase variables are a hard boot failure —
-`lib/env.ts` throws at module load with a message naming the missing variable.
-Failing loudly at boot beats failing mysteriously at 3 a.m. Missing Sentry or
-Resend keys disable that feature quietly and log one line at startup; they are
-genuinely optional. There is **no** fallback to a placeholder value anywhere.
+**Absent-key behaviour.** A missing required variable throws, with the
+variable's name in the message. Failing loudly beats failing mysteriously at
+3 a.m.
+
+The throw happens on **first use**, not at import. `lib/env.ts` exposes getters
+for exactly this reason: `next build` walks every module, so validating at
+import time would make a build without credentials fail — and that build is
+what CI runs on every pull request, and what an agent with no access to this
+Supabase project uses to check its own work. Deferring the throw keeps it just
+as loud while keeping `npm run build` credential-free, which is an invariant
+worth protecting.
+
+Missing Sentry or Resend keys disable that feature quietly; they are genuinely
+optional. There is **no** fallback to a placeholder value anywhere.
 
 ---
 
@@ -448,3 +463,18 @@ re-litigate. Date, decision, reason.
   people triage quickly.
 - **2026-09-06 — No paywall circumvention.** It is a failure state with copy,
   not a feature. This is a product decision and a legal one.
+- **2026-09-09 — `proxy.ts`, not `middleware.ts`.** Next 16 renamed the file
+  convention and warns on the old name.
+  `npx @next/codemod@canary middleware-to-proxy .` performs the rename.
+- **2026-09-09 — Environment validation is lazy.** §8 explains it. The
+  invariant being protected is that `npm run build` needs no credentials, which
+  is what makes CI meaningful and what keeps the Codex-owned slices unblocked.
+- **2026-09-09 — Database types are hand-written for now.** `supabase gen types`
+  needs either a Supabase access token or a working connection string, and
+  neither is configured. `lib/types.ts` must be replaced with generated output
+  once `SUPABASE_DB_URL` works; until then it is kept in step with SCHEMA.sql by
+  hand, which is exactly the kind of thing that rots.
+- **2026-09-09 — `docs/SCHEMA.sql` is the current schema, not a copy of the
+  first migration.** It carries every correction later migrations made, so a
+  fresh project needs one paste rather than a replay. Migrations stay
+  forward-only and frozen; `0001` still contains the bug `0002` fixed.
