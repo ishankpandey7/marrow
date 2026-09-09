@@ -538,6 +538,15 @@ then 'ready' else 'pending' end` assigned to an enum column raises 42804:
   `Get-Process | Where-Object { $_.MainWindowTitle -match 'FILENAME' }`. Read
   markdown in Notepad or VS Code; Word also leaves `~$` junk beside the file.
 
+- **CI failed on every push since Slice 0, and nothing local ever showed it.**
+  `PageProps` and `LayoutProps` are globals Next generates into `.next/types/`,
+  so `tsc --noEmit` cannot resolve them on a clean checkout — which is exactly
+  what CI has. Locally a build had always run first and left the types behind.
+  The fix is to make the script self-sufficient:
+  `"typecheck": "next typegen && tsc --noEmit"`. The lesson generalises: a
+  script that only works because of a previous command's leftovers is not a
+  check, and the way to find those is to run `rm -rf .next` before the suite.
+
 ### 2026-09-06 — Slice 0 setup, environment facts
 
 - `create-next-app@latest` now scaffolds **Next 16.3.4 / React 19.2.8**, not 15.
