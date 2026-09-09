@@ -20,27 +20,58 @@ not check is worse than an unticked one, because next session it gets skipped.
 
 Kept current at the end of every session. Read this first; it is the handoff.
 
-**Last updated: 2026-09-09, end of Slice 2.**
+**Last updated: 2026-09-09, end of Slice 3.**
 
-- **Done:** Slices 0 and 1. Slice 2 complete: `lib/fetcher.ts` with all
-  thirteen section 5 guards and 127 offline tests, `lib/sanitize.ts` with the
-  XSS corpus, `lib/extract.ts` with fixtures, and `POST /api/extract`. The
+- **Done:** Slices 0–3, with the outstanding hand checks below. Slice 2 shipped
+  `lib/fetcher.ts` with all thirteen section 5 guards and 127 offline tests,
+  `lib/sanitize.ts` with the XSS corpus, `lib/extract.ts` with fixtures, and
+  `POST /api/extract`. The
   pipeline was run against live URLs; results in Notes from the field.
-- **Half-done:** the same Slice 1 box as before — open `/inbox` more than an
-  hour after signing in and tick it if the session refreshed. Still blocks
-  nothing.
-- **Read this before touching Slice 3:** _nothing drives `/api/extract` yet._
-  `save_item` queues a `fetch_jobs` row and the cron that claims it is Slice 7,
+- **Slice 3 shipped in `999d425`:** the server-rendered reading view at
+  `/read/[id]`, with re-sanitized article HTML, deliberate typography, adjustable
+  font family and size, light/dark/sepia themes, device appearance until an
+  explicit choice, profile settings persistence, throttled reading progress
+  with restoration and a visibility-change flush, reserved image frames,
+  contained tables, designed failure states, keyboard controls and article text
+  without JavaScript. Build, typecheck, lint and all 322 tests have been
+  independently verified; no Slice 2 file was changed.
+- **Slice 3 image limitation:** publisher images need a tap to load and connect
+  directly to the source. Automatic proxied loading waits for the guarded
+  `/api/img` endpoint in Slice 8; the reserved frames already prevent layout
+  shifts.
+- **The reader preview is public and permanent:** `/reader-preview/[id]` is a
+  shipped fixture route, including on production, not a throwaway local page.
+  It needs no credentials and writes only to its own browser-storage namespace.
+  Start at `/reader-preview/longform`; the selector includes the existing
+  extraction fixtures, pending and all ten failure states. Slice 8 now requires
+  an explicit decision to keep or remove this route before launch.
+- **Extraction is still waiting for Slice 7:** _nothing drives `/api/extract`
+  yet._ `save_item` queues a `fetch_jobs` row and the cron that claims it is
+  Slice 7,
   so on the deployed site a saved item stays `pending` and the row keeps saying
-  "Fetching the article" forever. Extraction itself resolves every item it is
-  asked to process; it is simply never asked. Either do Slice 7 next, or call
-  the route by hand while working on Slice 3.
+  "Fetching the article" until extraction is invoked manually or Slice 7 ships.
+  Extraction itself resolves every item it is asked to process; it is simply
+  never asked automatically. The reader does not change this.
 - **Not verified by hand:** `POST /api/extract` has never run against the real
   database. Its columns and enum values were checked against `docs/SCHEMA.sql`
   by eye and it typechecks, but the RLS read, the service-role write to
   `item_content`, and the `items` check constraint have not been exercised. See
   "What to verify by hand" under Slice 2.
-- **Needed from the human:** a decision on the `User-Agent`. See the Notes.
+- **User-Agent decision settled:** no, we will not imitate a browser. Keep the
+  descriptive product-identifying agent required by ARCHITECTURE §5. Sites
+  that blackhole it may return `unreachable`; this is accepted behavior, not a
+  pending decision or a reason to disguise the fetcher.
+- **Slice 1 session-refresh box remains unticked:** open `/inbox` more than an
+  hour after signing in and tick it only if the session refreshed without a
+  fresh sign-in. Still blocks nothing.
+- **Slice 3 human hand checks:** read the 3,000-word fixture at phone width and
+  judge comfort; try Aa's families, sizes and three themes, device appearance
+  and a persisted explicit choice; scroll and reopen to check restoration;
+  check receding/reachable controls, J/K/Esc, tables scrolling within their own
+  container, image loading/unavailable states and complete text with JavaScript
+  disabled. The fixture catalogue uses browser persistence; checking live
+  profile settings and item progress requires `/read/<item UUID>` with actual
+  extracted content. The detailed hand-check guide remains under Slice 3.
 - **Carrying forward, both tracked below:** `lib/types.ts` is hand-written and
   must be replaced by generated types once `SUPABASE_DB_URL` works; and the
   first `supabase db push` will need `migration repair`, because the schema was
@@ -474,6 +505,9 @@ fast as they like. Test the 401 by actually calling it from outside.
       reader images from opt-in source requests to automatic proxied lazy
       loading. Preserve the reserved frames, SSRF guards and failure states.
 - [ ] **`/api/debug-sentry` is deleted.** (Added in Slice 0 for exactly this.)
+- [ ] **Decide whether `/reader-preview/[id]` stays or is removed before
+      launch.** It is currently a public, permanent fixture route on production;
+      record the decision and carry it out deliberately.
 - [ ] Content-Security-Policy set, with no `unsafe-inline` for scripts. Verified
       on the deployed site with the console open and no violations.
 - [ ] Security headers: HSTS, `X-Content-Type-Options`, `Referrer-Policy`,
@@ -558,9 +592,10 @@ are true but not written down anywhere else.
   the header — the same request with no `User-Agent` gets a 301 in 250 ms, and
   `Accept-Encoding: identity` is not the trigger. Guard 12 requires being
   identifiable, so this is a product decision, not a bug: imitating Chrome
-  would get us in, and it is detection evasion. **Needs a human decision.**
-  Until then, sites behind that kind of bot management fail gracefully as
-  `unreachable` with a retry offered.
+  would get us in, and it is detection evasion. **Decision settled at the end
+  of Slice 3: no browser impersonation.** Keep the descriptive `User-Agent`;
+  sites behind that kind of bot management fail gracefully as `unreachable`
+  with a retry offered. This behavior is accepted.
 
 - **A paywall teaser is not always short.** The New York Times wraps its notice
   in advertising furniture and the whole thing extracts as 435 words, past any
