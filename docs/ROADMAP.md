@@ -348,21 +348,27 @@ the tab does not lose the position.
 
 ### Done when
 
-- [ ] Archive, un-archive, favourite and delete all work from the list.
-- [ ] Every one of them is optimistic: the row changes instantly and reconciles
+- [x] Archive, un-archive, favourite and delete all work from the list.
+- [x] Every one of them is optimistic: the row changes instantly and reconciles
       on the server response, with a rollback and a visible message on failure.
-- [ ] Delete is a soft delete and offers undo for at least 10 seconds.
-- [ ] Tags: create by typing, autocomplete from existing tags, remove, and
+- [x] Delete is a soft delete and offers undo for at least 10 seconds.
+- [x] Tags: create by typing, autocomplete from existing tags, remove, and
       rename. `lib/tags.ts` slug normalisation is pure and tested — two tags
       differing only by case or spacing are one tag.
-- [ ] Filter by tag, by state (inbox / archive / favourites), and by read
+- [x] Filter by tag, by state (inbox / archive / favourites), and by read
       status. Filters are in the URL and survive a refresh and a share.
-- [ ] Bulk select with shift-click ranges, then bulk archive or tag.
-- [ ] Keyboard shortcuts: `e` archive, `f` favourite, `#` delete, `t` tag,
+- [x] Bulk select with shift-click ranges, then bulk archive or tag.
+- [x] Keyboard shortcuts: `e` archive, `f` favourite, `#` delete, `t` tag,
       `/` focus search, `?` shows the shortcut sheet.
 - [ ] Every list query is served by one of the partial indexes in `SCHEMA.sql`.
       Check with `explain analyze`; a sequential scan on `items` is a bug.
+      **Left:** run `docs/SLICE-4-EXPLAIN.sql` with real credentials; all 18 variants and expected indexes are supplied.
 - [ ] Pagination or infinite scroll that holds up at 1,000 items.
+      **Left:** 50-row pages and page-20 query bounds are tested; verify live latency at 1,000 items and the two-minute triage goal.
+
+Implementation is covered by offline pure, action and rendered-component tests.
+Live persistence, phone/browser focus and timing checks remain with the owner;
+follow `docs/SLICE-4-VERIFY.md`. No dependencies or migrations were added.
 
 ### Gotcha
 
@@ -549,6 +555,38 @@ Append surprises here as they happen: parser quirks, provider limits, deploy
 traps. Be specific and date each entry. Future-you has no memory of this
 session, and the whole value of this section is that it records the things that
 are true but not written down anywhere else.
+
+### 2026-09-09 — Slice 4
+
+- **An Undo needs its own row snapshot.** A successful delete response no
+  longer contains the row. Replaying an already queued Undo over that response
+  otherwise makes the restored row disappear again while its write is pending.
+  Pending restores carry their original rows; rejected restores revert to the
+  server list and keep Undo available for another attempt.
+- **Refreshes can arrive out of order with writes.** Snapshots carry the server
+  read's start time. An older route refresh cannot replace a newer confirmed
+  mutation response. Each response also replays the remaining serialized queue,
+  so one rejected archive does not roll back the next article's action.
+- **A lost response is not proof of a rejected write.** When saved state cannot
+  be read back, return to the last confirmed view, cancel unsent queued intent,
+  show the uncertainty, and require a successful reload before further triage.
+- **Filtering an embedded relationship also filters its displayed rows.** The
+  tag filter uses a separate `matched_tags:item_tags!inner(tag_id)` embed, so
+  the normal `item_tags(tag_id)` embed still includes every tag on each item.
+- **Archive has a different leading sort index.** Use `archived_at desc` for
+  archive and `created_at desc` for inbox/favourites, with `id desc` for ties.
+  Every state/read/tag variant has an eligible existing partial index path;
+  actual plans remain unverified without Supabase credentials.
+- **Tag identity and attachment are separate writes.** Conflict-safe creation
+  preserves the first display name. A rejected association can leave an unused
+  real tag; the error and refreshed catalogue make that visible. Rename to an
+  existing slug is rejected, preserving both tags and their associations.
+- **Autocomplete needs no debounce when it needs no requests.** The complete
+  tag catalogue is fetched in capped pages, cached in client state and refreshed
+  with server responses. Native datalist suggestions run entirely locally.
+- **Full-library search belongs to Slice 5.** `/` focuses a working title/URL
+  finder within the current page. `a`, then `e`, archives a page of 50 in two
+  keystrokes; `j`/`k` move and `x` selects individual rows.
 
 ### 2026-09-09 — Slice 3
 

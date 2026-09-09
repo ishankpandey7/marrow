@@ -355,6 +355,31 @@ disappears.
   Missing dimensions use a fixed 3:2 frame; valid dimensions keep their ratio.
   `object-fit: contain` and an equally sized unavailable state prevent shifts.
 
+### Library triage state
+
+- `/inbox` accepts `state=inbox|archive|favourites`, `read=all|read|unread`,
+  `tag=<tag UUID>` and a one-based `page`. Tag IDs keep shared filter URLs valid
+  after a rename. Pages contain 50 rows plus one server-side lookahead row.
+  Archive sorts by `archived_at`; the other states sort by `created_at`. All
+  have `id` as a deterministic secondary sort and retain the partial-index
+  predicates from SCHEMA.sql. Live plans are handed off in
+  `docs/SLICE-4-EXPLAIN.sql` and have not been verified without credentials.
+- Optimistic intent is queued in the client and written by session-scoped
+  Server Actions in order. Each response reloads the list and tags, then the
+  client replays only the remaining intent. A rejected operation therefore
+  rolls back without cancelling later independent operations. Snapshot read
+  timestamps prevent older route refreshes from undoing confirmed responses.
+- A transport failure can follow a committed write. If reconciliation fails,
+  the UI returns to its last confirmed list, cancels unsent intent, explains the
+  uncertainty and requires a reload before more triage. Delete Undo retains
+  the original rows and stays available without a timer while the client page
+  remains mounted; reload/navigation away can discard that local Undo history.
+- Tag names are normalized purely in `lib/tags.ts`, within the schema's ASCII
+  slug constraints. Creation ignores unique conflicts and then resolves the
+  existing ID. Bulk association is one insert; if it fails, an unused tag may
+  remain and is reported. Rename conflicts reject instead of merging tags.
+  Autocomplete uses the cached complete catalogue with no keystroke requests.
+
 ### Reader state and fixture boundary
 
 - `profiles.settings.reader` is `{ theme, family, size }`. Theme is `system`,
