@@ -28,6 +28,14 @@ export function ItemRow({ item }: { item: ItemListRow }) {
   const pending = item.status === "pending";
   const failed = item.status === "failed";
 
+  // Both the headline and the source fall back to the host, and until
+  // extraction runs neither has anything else to show. Printing it twice —
+  // "en.wikipedia.org · en.wikipedia.org · just now" — is the kind of small
+  // sloppiness that makes a list look unfinished.
+  const headline = item.title ?? host;
+  const source = item.site_name ?? host;
+  const showSource = source !== headline;
+
   return (
     <li className="border-b border-edge last:border-b-0">
       <a
@@ -37,7 +45,7 @@ export function ItemRow({ item }: { item: ItemListRow }) {
         className="block px-1 py-4 transition-colors hover:bg-ground-raised"
       >
         <p className="text-base leading-snug font-medium text-pretty text-ink">
-          {item.title ?? host}
+          {headline}
         </p>
 
         {item.excerpt && (
@@ -47,8 +55,12 @@ export function ItemRow({ item }: { item: ItemListRow }) {
         )}
 
         <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-faint">
-          <span>{item.site_name ?? host}</span>
-          <span aria-hidden="true">·</span>
+          {showSource && (
+            <>
+              <span>{source}</span>
+              <span aria-hidden="true">·</span>
+            </>
+          )}
           <span>{savedAgo(item.created_at)}</span>
 
           {item.reading_minutes !== null && (
