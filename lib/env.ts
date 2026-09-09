@@ -28,19 +28,34 @@ function required(name: string, value: string | undefined): string {
  * Safe to read from the browser. These values are compiled into the client
  * bundle. Never add a secret here.
  *
- * Validated at module load, so importing this module without a configured
- * environment throws immediately rather than producing a client that silently
- * points at `undefined`.
+ * Getters, not plain properties, so the throw happens on first *use* rather
+ * than on import. The difference matters: `next build` walks every module, so
+ * validating at import time would make a build without credentials fail — and
+ * a credential-free build is what lets CI verify a pull request and what lets
+ * an agent with no access to this Supabase project check its own work. The
+ * failure is still loud and still names the variable; it just arrives on the
+ * first request instead of at build time.
  */
 export const publicEnv = {
-  supabaseUrl: required(
-    "NEXT_PUBLIC_SUPABASE_URL",
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-  ),
-  supabaseAnonKey: required(
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY",
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-  ),
+  get supabaseUrl() {
+    return required(
+      "NEXT_PUBLIC_SUPABASE_URL",
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+    );
+  },
+  get supabaseAnonKey() {
+    return required(
+      "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    );
+  },
+  /** Origin used to build magic-link redirects. No trailing slash. */
+  get siteUrl() {
+    return required(
+      "NEXT_PUBLIC_SITE_URL",
+      process.env.NEXT_PUBLIC_SITE_URL,
+    ).replace(/\/+$/, "");
+  },
 } as const;
 
 /**
@@ -64,5 +79,4 @@ export function serverEnv() {
  */
 export const optionalEnv = {
   sentryDsn: process.env.NEXT_PUBLIC_SENTRY_DSN ?? process.env.SENTRY_DSN,
-  siteUrl: process.env.NEXT_PUBLIC_SITE_URL,
 } as const;
