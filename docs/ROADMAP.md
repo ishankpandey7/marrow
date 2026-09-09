@@ -20,10 +20,10 @@ not check is worse than an unticked one, because next session it gets skipped.
 
 Kept current at the end of every session. Read this first; it is the handoff.
 
-**Last updated: 2026-09-09, end of Slice 3.**
+**Last updated: 2026-09-10, end of Slice 4.**
 
-- **Done:** Slices 0–3, with the outstanding hand checks below. Slice 2 shipped
-  `lib/fetcher.ts` with all thirteen section 5 guards and 127 offline tests,
+- **Implemented:** Slices 0–4, with the outstanding verification below.
+  Slice 2 shipped `lib/fetcher.ts` with all thirteen section 5 guards and 127 offline tests,
   `lib/sanitize.ts` with the XSS corpus, `lib/extract.ts` with fixtures, and
   `POST /api/extract`. The
   pipeline was run against live URLs; results in Notes from the field.
@@ -35,6 +35,27 @@ Kept current at the end of every session. Read this first; it is the handoff.
   contained tables, designed failure states, keyboard controls and article text
   without JavaScript. Build, typecheck, lint and all 322 tests have been
   independently verified; no Slice 2 file was changed.
+- **Slice 4 shipped in `98e3c49`:** archive/unarchive, favourites, soft delete
+  with undo that stays available while the page is open, and optimistic
+  mutations that reconcile with server state and visibly roll back on failure.
+  Tags support normalized identity, creation, cached autocomplete, removal and
+  rename. State, tag and read-status filters live in the URL; the list has
+  50-row pagination, shift-click ranges, bulk archive/tag and keyboard triage.
+  `a`, then `e`, archives a page; `/` finds within the current page, with
+  full-library search still reserved for Slice 5. All 389 tests, typecheck,
+  lint and build have been independently verified, and no Slice 2 or Slice 3
+  file was touched.
+- **Slice 4 index box deliberately remains unticked:** run all 18 filter
+  variants in `docs/SLICE-4-EXPLAIN.sql` with real Supabase credentials and
+  representative saved items under authenticated RLS. Confirm the expected
+  `items_inbox_idx`, `items_archive_idx` and `items_favourites_idx` paths; a
+  sequential scan on `items` must be reviewed, not hidden with a planner switch
+  or an index added outside a migration.
+- **Slice 4 pagination box deliberately remains unticked:** page-20 query
+  bounds are tested, but closing this box needs live pagination latency at
+  1,000 saved items and the 200-unread-items-in-two-minutes keyboard triage
+  check. `docs/SLICE-4-VERIFY.md` also carries the remaining live persistence,
+  rollback, undo and phone/browser focus checks.
 - **Slice 3 image limitation:** publisher images need a tap to load and connect
   directly to the source. Automatic proxied loading waits for the guarded
   `/api/img` endpoint in Slice 8; the reserved frames already prevent layout
@@ -52,6 +73,9 @@ Kept current at the end of every session. Read this first; it is the handoff.
   "Fetching the article" until extraction is invoked manually or Slice 7 ships.
   Extraction itself resolves every item it is asked to process; it is simply
   never asked automatically. The reader does not change this.
+- **Next: Slice 5 cannot start until there are real saved, extracted items.**
+  Getting those needs Slice 7 to drive the extraction queue. The likely order
+  is **4 → 7 → 5 → 6**; search ranking needs real content to verify.
 - **Not verified by hand:** `POST /api/extract` has never run against the real
   database. Its columns and enum values were checked against `docs/SCHEMA.sql`
   by eye and it typechecks, but the RLS read, the service-role write to
@@ -507,6 +531,7 @@ fast as they like. Test the 401 by actually calling it from outside.
 
 ### Done when
 
+- [ ] Split `components/filter-bar.tsx` (872 lines) before launch.
 - [ ] Implement the guarded `/api/img` proxy from ARCHITECTURE §7 and switch
       reader images from opt-in source requests to automatic proxied lazy
       loading. Preserve the reserved frames, SSRF guards and failure states.
