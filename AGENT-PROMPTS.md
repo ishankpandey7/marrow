@@ -9,7 +9,10 @@ paste it, that is the whole session opener.
 
 Three messages. That is the entire rhythm.
 
-1. **Open** — paste the slice prompt from Part 3. Nothing else.
+1. **Open** — paste the slice prompt from Part 3. **Nothing else**, and that
+   is not shorthand: `AGENTS.md` loads the house rules by itself, and
+   "Where things stand" at the top of `docs/ROADMAP.md` says where the last
+   session left off. A fresh session in this folder starts oriented.
 2. **Work** — answer the agent's questions. Push back when something looks
    wrong. This is most of the session.
 3. **Close** — paste the wrap-up prompt from Part 4 before you run out of
@@ -439,8 +442,15 @@ refactors, no "one small fix while I am here".
    about.
 ```
 
-Keep that five-line handoff. Paste it at the top of the next session, above the
-slice prompt.
+That handoff goes into **"Where things stand" at the top of `docs/ROADMAP.md`**,
+not into a note you have to remember to carry. House rule 1 makes every agent
+read that file before writing anything, so the next session picks it up on its
+own.
+
+Which means the next session needs **nothing from you but the slice prompt**.
+No summary of what was built, no list of what works, no re-explaining the
+architecture. If you find yourself typing any of that, the handoff was not
+written properly — fix the file rather than the message.
 
 ---
 
