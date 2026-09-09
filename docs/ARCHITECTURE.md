@@ -67,6 +67,10 @@ change plus a domain purchase.
 Any further deviation gets a row in §13 and a line in this section. A deviation
 that is not written down is a trap for whoever opens this repo next.
 
+- **Slice 3 image loading is opt-in until the image proxy ships.** Publisher
+  images reserve their layout space but make no request until the reader
+  chooses to connect to the source. See §7 and the Slice 8 launch checklist.
+
 ---
 
 ## 3. Repository layout
@@ -341,9 +345,41 @@ disappears.
 - **Optimistic UI on the list.** Archive, favourite and delete apply instantly
   and reconcile on the server response. Saving shows the item immediately in a
   `pending` state; extraction fills it in.
-- **Images are proxied** through `/api/img`, which re-uses the §5 guards. Direct
-  hotlinking leaks our readers' IP addresses to every publisher they read and
-  breaks under HTTPS when the source is HTTP.
+- **Images will be proxied** through `/api/img`, re-using the §5 guards. This
+  endpoint is not present in Slices 0–2. Until it ships, the Slice 3 reader
+  reserves a bounded image frame and offers **Load image**, explicitly saying
+  it connects to the source site. Only that choice sets a publisher `src`;
+  requests use `loading="lazy"` and `referrerPolicy="no-referrer"`. This still
+  exposes the reader's IP to that source and HTTP images can fail under HTTPS,
+  so automatic publisher loading remains deferred to the proxy in Slice 8.
+  Missing dimensions use a fixed 3:2 frame; valid dimensions keep their ratio.
+  `object-fit: contain` and an equally sized unavailable state prevent shifts.
+
+### Reader state and fixture boundary
+
+- `profiles.settings.reader` is `{ theme, family, size }`. Theme is `system`,
+  `light`, `dark` or `sepia`; family is `serif` or `sans`; size is 18, 20, 22 or
+  24 CSS pixels. An absent theme means `system`. CSS follows device changes
+  without JavaScript; an explicit profile choice is rendered by the server.
+  Updates merge the reader object into the existing profile settings.
+- `items.read_progress` is a fraction of the article's scrollable height,
+  excluding the heading and footer. A trailing five-second throttle serializes
+  writes. `visibilitychange` (hidden), `pagehide` and unmount flush the latest
+  value. A per-user, per-item local recovery value survives interrupted network
+  writes; a successful write clears it if it has not changed in the meantime.
+  Closing a browser can interrupt a request, so the recovery value is restored
+  on the next visit and synchronized as reading resumes.
+- `/read/[id]` reads the item, content and profile through the verified session
+  client and RLS. The body is re-sanitized and converted to React elements only
+  on the server. Only controls, progress and individual image loading are
+  client components; article HTML is never imported into their JavaScript.
+- `/reader-preview/[id]` is a public, noindex catalogue of fixed fixtures. Its
+  explicit proxy exception never applies to `/read`, and no fixture path reads
+  Supabase. The catalogue selects from an allowlist before reading any file.
+  It shares the production renderer but stores preferences and positions only
+  in a separate browser namespace. Retry explains that no job was requested.
+  The original SVG is served locally; example-domain source links are fixtures,
+  not working publisher URLs.
 
 ---
 
@@ -462,6 +498,17 @@ capture works during Slice 0 and is **deleted in Slice 8**.
 
 Append here when a decision is made that a future reader would otherwise
 re-litigate. Date, decision, reason.
+
+- **2026-09-09 — Credential-free reader catalogue, separate from auth.** A
+  dedicated `/reader-preview/[id]` route makes Slice 3 reviewable without
+  weakening the authenticated layout. Only this fixed fixture namespace skips
+  session refresh. Production persistence is covered with offline session and
+  database fixtures, not a live project.
+- **2026-09-09 — Opt-in publisher images pending the proxy.** The image proxy
+  described in §7 was not implemented by an earlier slice. Building a second
+  fetcher inside the reader would cross the Slice 3 boundary. Reserve space,
+  disclose the source connection, and require a tap until the guarded proxy
+  ships; the remaining work is tracked in Slice 8.
 
 - **2026-09-06 — Next.js 16 instead of 15.** `create-next-app@latest` ships 16.
   Pinning back a major for doc-consistency is not a reason.

@@ -250,26 +250,48 @@ keeps its URL.
 
 ### Done when
 
-- [ ] The article renders server-side. Extracted HTML never enters the client
+- [x] The article renders server-side. Extracted HTML never enters the client
       bundle.
-- [ ] Typography is actually good: a measure of 60–75 characters, generous line
+- [x] Typography is actually good: a measure of 60–75 characters, generous line
       height, real vertical rhythm between block elements. Read a 3,000-word
       article on a phone and it should be pleasant.
-- [ ] Font size, family (serif / sans) and theme (light / dark / sepia) are
+- [x] Font size, family (serif / sans) and theme (light / dark / sepia) are
       user-adjustable and persist to `profiles.settings`.
-- [ ] Theme follows `prefers-color-scheme` until the user chooses; an explicit
+- [x] Theme follows `prefers-color-scheme` until the user chooses; an explicit
       choice wins and persists.
-- [ ] Reading progress is tracked as you scroll, throttled, and written back to
+- [x] Reading progress is tracked as you scroll, throttled, and written back to
       `items.read_progress`. Re-opening restores the position.
-- [ ] Images lazy-load, are width-constrained, and never cause layout shift.
-- [ ] Code blocks, blockquotes, tables and figures all have deliberate styles.
+- [x] Images lazy-load, are width-constrained, and never cause layout shift.
+      Publisher images require a tap until the guarded proxy ships (Slice 8).
+- [x] Code blocks, blockquotes, tables and figures all have deliberate styles.
       Tables scroll horizontally inside their own container rather than making
       the page scroll.
-- [ ] Every `fail_reason` renders its own designed state with the copy from
+- [x] Every `fail_reason` renders its own designed state with the copy from
       ARCHITECTURE §6 and a sensible action — retry, or open the original.
-- [ ] Keyboard: `j`/`k` scroll, `Esc` back to the list.
-- [ ] Works with JavaScript disabled, at least to the extent of showing the
+- [x] Keyboard: `j`/`k` scroll, `Esc` back to the list.
+- [x] Works with JavaScript disabled, at least to the extent of showing the
       article text.
+
+### Verification and hand check
+
+`npm run build`, `npm run typecheck`, `npm run lint`, and `npm test` pass.
+The suite has 322 tests, including reader geometry, throttling, serial writes,
+HTML sanitization, server-rendered article text, all failure copy and actions,
+and session-scoped settings/progress/retry writes using offline fixtures.
+No live Supabase verification was requested or used for this slice.
+
+Run `npm run dev` and open `/reader-preview/longform`. The sample contains over
+3,000 words, a local illustration, a wide table, a blockquote and a code block.
+The sample selector links to `news-article`, `bare-title`, `pending`, and every
+failure code. Paywall, JavaScript-required and no-content states run the
+existing `paywalled.html`, `spa.html`, and `empty-shell.html` through extraction.
+
+By hand: read at phone width; use Aa to try all three themes, serif/sans and
+four sizes; reload after scrolling; check that controls recede downward and
+return on upward scroll, a tap or keyboard focus. Try J/K and Esc (Esc first
+closes appearance controls). Pan the table without moving the page sideways.
+Disable JavaScript and check that the complete text remains. The authenticated
+route is `/read/<item UUID>`; this slice does not change inbox row navigation.
 
 ### Gotcha
 
@@ -448,6 +470,9 @@ fast as they like. Test the 401 by actually calling it from outside.
 
 ### Done when
 
+- [ ] Implement the guarded `/api/img` proxy from ARCHITECTURE §7 and switch
+      reader images from opt-in source requests to automatic proxied lazy
+      loading. Preserve the reserved frames, SSRF guards and failure states.
 - [ ] **`/api/debug-sentry` is deleted.** (Added in Slice 0 for exactly this.)
 - [ ] Content-Security-Policy set, with no `unsafe-inline` for scripts. Verified
       on the deployed site with the console open and no violations.
@@ -490,6 +515,30 @@ Append surprises here as they happen: parser quirks, provider limits, deploy
 traps. Be specific and date each entry. Future-you has no memory of this
 session, and the whole value of this section is that it records the things that
 are true but not written down anywhere else.
+
+### 2026-09-09 — Slice 3
+
+- **A fixture inside the authenticated route group still needs credentials.**
+  Both the app layout and proxy verify a session before the page is rendered.
+  The lasting review surface is `/reader-preview/[id]`, outside that layout,
+  with an explicit proxy exception for only that public fixture namespace.
+  The production `/read/[id]` path keeps both session checks and RLS.
+- **The existing image fixture intentionally points at a reserved domain.**
+  It cannot prove successful loading. The long-form fixture has an original
+  local SVG, while the news fixture exercises missing dimensions, consent and
+  unavailable-image behavior. Both keep the same frame before and after load.
+- **The proxy in the architecture was a plan, not an endpoint.** Avoided
+  inventing a second fetch boundary in this UI slice. Images connect to a
+  publisher only after an explicit tap; automatic proxy loading is tracked in
+  Slice 8 and the temporary behavior is documented in ARCHITECTURE §7.
+- **A five-second timer is not enough on its own.** Pending writes must flush
+  when the page becomes hidden, and slow requests must remain ordered. The
+  reader also keeps a local recovery position because the browser can abort a
+  final network request during shutdown.
+- **Phone fixture checks:** no page-wide horizontal overflow, a separately
+  scrolling table, restored position after reload, persistent sepia/text size,
+  receding toolbar, and a readable paywall state. Article copy is also asserted
+  in server-only HTML rendering tests, without JavaScript or a database.
 
 ### 2026-09-09 — Slice 2
 

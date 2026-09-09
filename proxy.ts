@@ -6,6 +6,10 @@ import { createProxySupabase } from "@/lib/db/proxy";
 const PROTECTED_PREFIXES = ["/inbox", "/read", "/settings"];
 
 export async function proxy(request: NextRequest) {
+  // The public, fixed fixture catalogue never reads a session or any user data.
+  if (request.nextUrl.pathname.startsWith("/reader-preview/")) {
+    return NextResponse.next();
+  }
   const { supabase, getResponse } = createProxySupabase(request);
 
   // getUser(), not getSession(). getSession() decodes the cookie and believes
