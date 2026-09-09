@@ -107,10 +107,10 @@ git status --short
 
 Do hi possible jawab hain:
 
-| Screen pe kya aaya | Matlab | Kya karna hai |
-| --- | --- | --- |
-| **Kuch nahi. Khaali.** | Sab kuch save ho chuka hai. | Kuch nahi. Ye achhi baat hai. |
-| Kuch lines aayin, jaise `M app/page.tsx` | Kuch changes save nahi hue | Agent ko bolo commit kare |
+| Screen pe kya aaya                       | Matlab                      | Kya karna hai                 |
+| ---------------------------------------- | --------------------------- | ----------------------------- |
+| **Kuch nahi. Khaali.**                   | Sab kuch save ho chuka hai. | Kuch nahi. Ye achhi baat hai. |
+| Kuch lines aayin, jaise `M app/page.tsx` | Kuch changes save nahi hue  | Agent ko bolo commit kare     |
 
 `M` matlab modified (badla gaya), `??` matlab nayi file jo git ko pata hi nahi.
 
@@ -212,12 +212,12 @@ gh auth login
 
 Ye tumse 4-5 sawaal poochega. Arrow keys se choose karo, Enter dabao:
 
-| Sawaal | Kya chunna hai |
-| --- | --- |
-| What account do you want to log into? | `GitHub.com` |
-| What is your preferred protocol? | `HTTPS` |
-| Authenticate Git with your GitHub credentials? | `Yes` |
-| How would you like to authenticate? | `Login with a web browser` |
+| Sawaal                                         | Kya chunna hai             |
+| ---------------------------------------------- | -------------------------- |
+| What account do you want to log into?          | `GitHub.com`               |
+| What is your preferred protocol?               | `HTTPS`                    |
+| Authenticate Git with your GitHub credentials? | `Yes`                      |
+| How would you like to authenticate?            | `Login with a web browser` |
 
 Phir ek code dikhega jaise `A1B2-C3D4`. **Us code ko copy karo**, Enter dabao —
 browser khulega, code paste karo, aur **Authorize** dabao.
@@ -258,11 +258,11 @@ sakta.** Free plan kaafi hai.
 
 **Ab keys copy karni hain.** Left sidebar mein **Project Settings** → **API**:
 
-| Page pe jo dikh raha hai | Kis naam se save karna hai |
-| --- | --- |
-| Project URL | `NEXT_PUBLIC_SUPABASE_URL` |
-| `anon` `public` | `NEXT_PUBLIC_SUPABASE_ANON_KEY` |
-| `service_role` `secret` | `SUPABASE_SERVICE_ROLE_KEY` |
+| Page pe jo dikh raha hai | Kis naam se save karna hai      |
+| ------------------------ | ------------------------------- |
+| Project URL              | `NEXT_PUBLIC_SUPABASE_URL`      |
+| `anon` `public`          | `NEXT_PUBLIC_SUPABASE_ANON_KEY` |
+| `service_role` `secret`  | `SUPABASE_SERVICE_ROLE_KEY`     |
 
 > **Dhyan se:** `service_role` wali key ek **password** hai. Wo har user ka data
 > padh sakti hai. Usko kisi chat mein paste mat karna, kisi ko bhejna mat, aur
@@ -336,14 +336,14 @@ mein — sab wahan likha hai.
 
 Sab folder ke andar se chalana:
 
-| Command | Kya karta hai |
-| --- | --- |
-| `npm run dev` | App chalu karo, phir localhost:3000 kholo |
-| `Ctrl + C` | App band karo |
-| `git status --short` | Kuch unsaved hai? Khaali = safe |
-| `git log --oneline` | Ab tak ke saare save points |
-| `npm test` | Tests chalao |
-| `explorer.exe .` | Folder kholo Explorer mein |
+| Command              | Kya karta hai                             |
+| -------------------- | ----------------------------------------- |
+| `npm run dev`        | App chalu karo, phir localhost:3000 kholo |
+| `Ctrl + C`           | App band karo                             |
+| `git status --short` | Kuch unsaved hai? Khaali = safe           |
+| `git log --oneline`  | Ab tak ke saare save points               |
+| `npm test`           | Tests chalao                              |
+| `explorer.exe .`     | Folder kholo Explorer mein                |
 
 ---
 

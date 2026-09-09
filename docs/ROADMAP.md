@@ -30,8 +30,8 @@ not check is worse than an unticked one, because next session it gets skipped.
 - [x] Next.js 16 + TypeScript strict + Tailwind v4 scaffolded, `npm run dev` serves.
 - [x] `docs/ARCHITECTURE.md`, `docs/SCHEMA.sql`, `docs/ROADMAP.md` on disk.
 - [x] `supabase/migrations/0001_init.sql` exists and matches `SCHEMA.sql`.
-- [ ] Migration applied to the real Supabase project.
-- [ ] `select tablename, rowsecurity from pg_tables where schemaname='public'`
+- [x] Migration applied to the real Supabase project.
+- [x] `select tablename, rowsecurity from pg_tables where schemaname='public'`
       run against the real database, every row `t`, output pasted into this file
       under Notes from the field.
 - [x] `lib/db/` exports three clients: browser (anon), server (anon + cookies),
@@ -55,8 +55,10 @@ not check is worse than an unticked one, because next session it gets skipped.
       and the error appears in the Sentry dashboard.
 - [x] Scripts: `dev`, `build`, `start`, `typecheck`, `lint`, `format`, `test`.
 - [x] `.github/workflows/ci.yml` runs install, typecheck, lint, test, build on PR.
-- [ ] Pushed to `main` on GitHub.
-- [ ] Deployed on Vercel, custom domain attached, HTTPS working.
+- [x] Pushed to `main` on GitHub (`ishankpandey7/marrow`, private).
+- [ ] Deployed on Vercel, custom domain attached, HTTPS working. Vercel project
+      exists and env vars are set; the custom domain is deliberately deferred to
+      launch, so this box stays open until Slice 8.
 
 ### Gotcha
 
@@ -354,7 +356,7 @@ anything, or change settings.
 - [ ] A job stuck in `running` with a stale `locked_at` is reclaimed.
 - [ ] `/api/cron/purge` hard-deletes items soft-deleted more than 30 days ago.
 - [ ] Every cron route rejects a request without `Authorization: Bearer
-  ${CRON_SECRET}` — verified by calling it from outside with curl and
+${CRON_SECRET}` — verified by calling it from outside with curl and
       getting a 401.
 - [ ] `vercel.json` schedules both jobs and they are visible as running in the
       Vercel dashboard.
@@ -461,6 +463,50 @@ are true but not written down anywhere else.
 - `*.sql` is in `.prettierignore` on purpose. Prettier reformatting
   `docs/SCHEMA.sql` but not `supabase/migrations/0001_init.sql` would break the
   byte-identity test between them.
+- **2026-09-09 — schema applied and verified against the live project.**
+  `pg_tables` output, all eight tables, every one with RLS on:
+
+  ```
+  tablename     | rowsecurity
+  --------------+------------
+  fetch_jobs    | true
+  highlights    | true
+  item_content  | true
+  item_tags     | true
+  items         | true
+  profiles      | true
+  save_events   | true
+  tags          | true
+  ```
+
+  Also verified over PostgREST: all eight tables reachable with the service
+  role; `items` with the anon key returns `200 []` (policies are `to
+authenticated`, so an anonymous reader sees nothing); and `save_item()` called
+  with valid arguments but no session returns `401 / 42501 / not authenticated`,
+  which proves in one call that the function exists, its signature matches what
+  the app will call, and its `auth.uid()` guard fires.
+
+- **Applying the schema needed no database password.** Supabase SQL Editor,
+  paste `docs/SCHEMA.sql`, Run. Worth knowing because `supabase db push` needs a
+  connection string and the CLI never got one working here.
+- **Supabase pooler hostnames carry an index.** A connection string with
+  `aws-ap-south-1.pooler.supabase.com` does not resolve; the real hosts are
+  `aws-0-ap-south-1...` and `aws-1-ap-south-1...`. If DNS says ENOTFOUND, the
+  hostname is wrong, not the network.
+- **Direct connection (`db.<ref>.supabase.co`) resolves to IPv6 only** on this
+  project. On an IPv4-only home connection it will never connect. Use the
+  session pooler for migrations.
+- **Because the schema went in through the SQL Editor, the CLI's
+  `supabase_migrations.schema_migrations` table does not know about 0001.** The
+  first time `supabase db push` runs — Slice 5 — it will try to re-apply
+  0001_init.sql and fail on `type "item_status" already exists`. Fix at that
+  point with `supabase migration repair --status applied 0001`, do not delete
+  the migration file.
+- **Two Supabase projects existed briefly and their values got mixed.** The app
+  keys pointed at the live project while `SUPABASE_DB_URL` still held a deleted
+  one. Nothing catches this except trying to connect — the app keys work fine on
+  their own. If a connection error names a project ref that is not in
+  `NEXT_PUBLIC_SUPABASE_URL`, that is the bug.
 - `next build` **does not need any environment variable**, and it should stay
   that way: `lib/env.ts` validates at module load, but nothing on the public
   landing path imports it. That is what lets CI build without secrets. If a
