@@ -28,8 +28,20 @@ Kaam kya karta hai:
 Plus: tags laga sakte ho, search kar sakte ho, aur ek browser extension hoga
 jisse ek click mein current page save ho jaayega.
 
-**Abhi kya bana hai:** sirf dhaancha (skeleton). Ek "coming soon" page dikhta
-hai. Database ka design ban chuka hai. Asli features Slice 1 se shuru honge.
+**Abhi kya bana hai:**
+
+- **Slice 0 poora** — dhaancha, database (8 tables, sab pe security lagi),
+  error tracking, CI, aur live website.
+- **Slice 1 ka code poora** — email link se login, link save karna, aur list.
+  Live hai. Bas tumhara khud login karke test karna baaki hai.
+- **Agla:** Slice 2 — asli article nikaalne wali machine.
+
+Live site: https://marrow-bice.vercel.app
+
+> **`.md` files kabhi Word mein mat kholna.** Word unhe lock kar deta hai (phir
+> main likh nahi paata) aur agar save kar diya toh formatting bigaad deta hai.
+> **Notepad ya VS Code** use karna. Word band karne ke baad `~$` se shuru hone
+> wali files bhi bana deta hai — wo kachra hai, hata dena.
 
 ---
 
@@ -79,8 +91,11 @@ toh purane save pe wapas ja sakte ho.
 
 Git wahi cheez hai code ke liye. Har save point ko **commit** kehte hain.
 
-Abhi tak humne 9 commits banaye hain. Har commit mein likha hai ki kya badla
-aur kyun badla.
+Har commit mein likha hai ki kya badla **aur kyun badla**. Ye dekhne ke liye:
+
+```bash
+git log --oneline
+```
 
 **Faayda:** agar kal koi agent kuch tod de, toh ek command se sab kuch waapas
 theek ho jaata hai. Iske bina tum ghante barbaad karoge.
@@ -172,12 +187,32 @@ Doosri command chalani ho toh nayi window kholo.
 
 ---
 
-## 6. Ab karna kya hai — order mein
+## 6. Account setup — ye sab ho chuka hai ✅
 
-Poora time: lagbhag 40 minute. Ek hi baar karna hai.
+Neeche wale saare steps **poore ho chuke hain**. Ye yahan isliye rakhe hain ki
+kabhi naye laptop pe ya naye Supabase project pe dobara karna pade toh tareeka
+likha ho.
 
-Jaldi mein ho toh sirf **Step A aur Step C** karo. Utne se agla poora kaam khul
-jaata hai.
+| Step                          | Haal                                |
+| ----------------------------- | ----------------------------------- |
+| A — `gh` install + login      | ✅ `ishankpandey7`                  |
+| B — GitHub repo               | ✅ `ishankpandey7/marrow` (private) |
+| C — Supabase project + schema | ✅ 8 tables, sab pe security `true` |
+| D — Vercel                    | ✅ https://marrow-bice.vercel.app   |
+| E — Sentry                    | ✅ error pakadna verify ho gaya     |
+| F — Domain                    | ⬜ launch tak roka hua (Slice 8)    |
+
+**Sirf ek cheez baaki hai**, jo login test karne se pehle chahiye —
+Supabase → **Authentication → URL Configuration**:
+
+- Site URL: `https://marrow-bice.vercel.app`
+- Redirect URLs mein dono: `http://localhost:3000/**` aur
+  `https://marrow-bice.vercel.app/**`
+
+Ye na ho toh email wala link click karne pe error aayega, aur error se wajah
+bilkul samajh nahi aayegi.
+
+Zyada tafseel se sab kuch [SETUP.md](SETUP.md) mein hai.
 
 ---
 

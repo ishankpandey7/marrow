@@ -103,9 +103,9 @@ to test the magic-link round trip.
       `/api/save`.
 - [x] `/api/save` calls the `save_item` RPC. It does not hand-roll the upsert.
 - [x] The saved item appears in the list immediately, in `pending` state.
-- [ ] The list renders on mobile first and looks deliberate at 375 px. The
-      sign-in page was checked at 375 px; the list itself needs a signed-in
-      session, so it is on the hand-verification list.
+- [x] The list renders on mobile first and looks deliberate at 375 px.
+      Checked at 375 px and at desktop width against fixtures covering a
+      pending, a ready and a failed row, plus the empty state.
 - [x] Empty state tells you what to do next, with an actual affordance. Not the
       words "No items".
 - [x] Signing in as a second user shows none of the first user's items.
@@ -490,6 +490,22 @@ then 'ready' else 'pending' end` assigned to an enum column raises 42804:
   contains the original uncast CASE, correctly — that is history. The enum lint
   runs against `docs/SCHEMA.sql`, which is the current schema and where every
   migration has to land anyway.
+
+- **Checking a signed-in screen without signing in.** A throwaway page under
+  `app/` that renders the real components against fixture rows, screenshotted
+  at 375 px and then deleted, is enough to judge the layout — and it caught a
+  duplicated hostname (`en.wikipedia.org · en.wikipedia.org · just now`) that
+  only appears before extraction has run, which is every row in Slice 1. This
+  is also the shape Slice 3 needs, since Codex has no credentials.
+
+- **Deleting a page leaves a stale type behind.** `.next/dev/types/validator.ts`
+  keeps importing the route that no longer exists, and `npm run typecheck`
+  fails with TS2307 on a file you did not write. `rm -rf .next` and rebuild.
+
+- **Word takes an exclusive lock on a `.md` file.** Any write fails with
+  `EPERM: operation not permitted, rename ...`. To find the culprit:
+  `Get-Process | Where-Object { $_.MainWindowTitle -match 'FILENAME' }`. Read
+  markdown in Notepad or VS Code; Word also leaves `~$` junk beside the file.
 
 ### 2026-09-06 — Slice 0 setup, environment facts
 
