@@ -42,3 +42,9 @@ next-env.d.ts
 
 # The example file is documentation, not configuration. It must be committed.
 !.env.example
+
+# Microsoft Office lock files, created when a .md is opened in Word.
+~$*
+
+# Supabase CLI scratch directory.
+supabase/.temp/
