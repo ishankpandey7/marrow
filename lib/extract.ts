@@ -59,6 +59,33 @@ const ARTICLE_TYPES = new Set([
 ]);
 
 /**
+ * Phrases that appear in the extracted body itself when what we extracted is
+ * an interstitial rather than an article.
+ *
+ * Checked regardless of length, because a teaser is not always short: the New
+ * York Times wraps its paywall notice in advertising furniture and the whole
+ * thing comes back as four hundred words, comfortably past any threshold for
+ * "stub", and would otherwise be stored as a two-minute read whose entire
+ * content is "we are checking your access".
+ *
+ * Deliberately narrow. These are sentences a publisher writes to a reader who
+ * cannot see the article, and prose that happens to be *about* paywalls does
+ * not phrase things this way.
+ */
+const PAYWALL_BODY_PHRASES = [
+  "you have a preview view of this article",
+  "subscribe to continue reading",
+  "to continue reading this article",
+  "this article is for subscribers",
+  "already a subscriber? sign in",
+  "already a subscriber? log in",
+  "register to continue reading",
+  "create an account to continue reading",
+  "you have reached your article limit",
+  "subscribe to read the full",
+];
+
+/**
  * Read as substrings of the lowercased markup. Every one of these is a phrase
  * a page shows *instead of* the article, so they are only consulted once the
  * body has already come back too thin to be one.
@@ -355,6 +382,12 @@ function sameSiteCanonical(
 // Failure signals
 // ---------------------------------------------------------------------------
 
+/** The body we are about to store is the paywall, not the article. */
+function bodyIsPaywallNotice(text: string): boolean {
+  const lower = text.toLowerCase();
+  return PAYWALL_BODY_PHRASES.some((phrase) => lower.includes(phrase));
+}
+
 function hasPaywallSignal(html: string, jsonLd: JsonLd): boolean {
   // schema.org's own marker, and the only one publishers agree on. Written as
   // a boolean by most and as a string by some.
@@ -467,6 +500,11 @@ export function extractArticle(input: ExtractInput): ExtractOutcome {
   );
 
   const metaTitle = firstNonEmpty(
+    // name before headline. Both are schema.org's, and plenty of sites put the
+    // article title in one and something else entirely in the other —
+    // Wikipedia's headline is its one-line description ("species of bird"),
+    // which would land in the list as the title of the article.
+    asText(article.name),
     asText(article.headline),
     metaContent(document, 'meta[property="og:title"]'),
     metaContent(document, 'meta[name="twitter:title"]'),
@@ -555,6 +593,12 @@ export function extractArticle(input: ExtractInput): ExtractOutcome {
   const html = sanitiseArticleHtml(parsed?.content ?? "");
   const text = toPlainText(html);
   const wordCount = countWords(text);
+
+  // Length is no help when the interstitial is padded out with advertising
+  // furniture, so the body is asked what it is before it is asked how big.
+  if (bodyIsPaywallNotice(text)) {
+    return { ok: false, reason: "paywalled", metadata };
+  }
 
   if (wordCount < THIN_ARTICLE_WORDS) {
     // Order matters. A paywall teaser is usually also script-heavy, and

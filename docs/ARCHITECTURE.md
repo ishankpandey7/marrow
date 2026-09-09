@@ -208,7 +208,12 @@ a second one, that is the bug.
    and then handing the hostname to `fetch` leaves a DNS-rebinding window: the
    name can resolve to a public IP for your check and `127.0.0.1` for the actual
    connection. Pass a custom `lookup` to the agent that returns only the address
-   you already approved.
+   you already approved. This is why the fetcher is built on `node:http` and
+   `node:https` rather than `fetch`: `fetch` exposes no socket-level `lookup`
+   hook, so on `fetch` this guard cannot be written at all. Node calls that
+   hook with `{ all: true }` and expects an array back whenever
+   `autoSelectFamily` is on, which it has been by default since Node 20 —
+   answering the older bare-string shape fails every request at connect time.
 8. **Redirects are re-validated, every hop.** `redirect: 'manual'`. Maximum 3
    hops. Each `Location` is resolved against the current URL and run through
    the entire check from step 1. A public host that 302s to `127.0.0.1` is the
@@ -223,8 +228,14 @@ a second one, that is the bug.
 11. **Content-Type allowlist.** `text/html`, `application/xhtml+xml`,
     `text/plain`. Anything else is refused after headers, before the body.
 12. **No ambient authority.** No cookies, no `Authorization`, no client
-    certificates, no proxy environment variables. A descriptive `User-Agent`
-    naming the product and a contact URL, so site operators can identify us.
+    certificates, no proxy environment variables. `node:http` reads no proxy
+    variables at all, which is a third reason it is the transport. A
+    descriptive `User-Agent` naming the product and a contact URL, so site
+    operators can identify us — accepting that some CDNs blackhole any agent
+    that is not a browser, and that those sites therefore resolve to
+    `unreachable` after the timeout. Being identifiable is the point; a
+    `User-Agent` that imitates Chrome to get past bot management is not a
+    change to make quietly.
 13. **Errors are opaque to the caller.** Map every failure to the fixed
     taxonomy in §6. Never return the raw error, the resolved IP, the timing, or
     the redirect chain to the user. Differentiated errors turn the fetcher into
@@ -262,6 +273,11 @@ Everything here after the fetch is pure and testable offline.
    strip a trailing slash on a non-empty path, and honour `rel=canonical` from
    the fetched document when it points at the same registrable domain — and only
    then, because an off-domain canonical is how a scraper site steals identity.
+   Registrable domain needs the Public Suffix List and therefore a dependency we
+   do not carry, so the implemented test is narrower: the same host, or one host
+   a subdomain of the other. It never accepts a canonical the fuller test would
+   reject; it declines `m.example.com` pointing at `www.example.com`, which
+   loses a dedupe rather than opening a hole.
    Hash the result with SHA-256 into `url_hash`.
 2. **Parse** the HTML with `linkedom` — not `jsdom`. Serverless cold starts
    matter and `jsdom` is an order of magnitude heavier.
@@ -289,18 +305,18 @@ these, stored in `items.fail_reason`, each with its own user-facing copy and its
 own suggested next action. A failed save is still a saved item — the URL and
 title are kept, the body is not.
 
-| Code               | Means                                                              | What the user sees                                     |
-| ------------------ | ------------------------------------------------------------------ | ------------------------------------------------------ |
-| `blocked_url`      | Failed a §5 guard.                                                 | "That link can't be saved." No detail, deliberately.   |
-| `unreachable`      | DNS failure, connection refused, timeout.                          | "Couldn't reach that site." Offer retry.               |
-| `not_found`        | 404 or 410.                                                        | "That page is gone."                                   |
-| `forbidden`        | 401, 403, or a bot wall.                                           | "That site blocked us."                                |
-| `paywalled`        | Extracted, but the body is a stub and paywall markers are present. | "Looks like a paywall — saved the link only."          |
-| `too_large`        | Exceeded 5 MB.                                                     | "That page is too big."                                |
-| `unsupported_type` | Not HTML.                                                          | "Only web pages for now."                              |
-| `js_required`      | Under 250 words and the document is mostly `<script>`.             | "This page needs a browser to render. Saved the link." |
-| `no_content`       | Readability returned nothing usable.                               | "Couldn't find an article here. Saved the link."       |
-| `server_error`     | Anything else. Logged to Sentry with the URL.                      | "Something went wrong on our end." Retry.              |
+| Code               | Means                                                                                                                | What the user sees                                     |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `blocked_url`      | Failed a §5 guard.                                                                                                   | "That link can't be saved." No detail, deliberately.   |
+| `unreachable`      | DNS failure, connection refused, timeout.                                                                            | "Couldn't reach that site." Offer retry.               |
+| `not_found`        | 404 or 410.                                                                                                          | "That page is gone."                                   |
+| `forbidden`        | 401, 403, or a bot wall.                                                                                             | "That site blocked us."                                |
+| `paywalled`        | Extracted, but the body is a stub and paywall markers are present, or the extracted body is itself a paywall notice. | "Looks like a paywall — saved the link only."          |
+| `too_large`        | Exceeded 5 MB.                                                                                                       | "That page is too big."                                |
+| `unsupported_type` | Not HTML.                                                                                                            | "Only web pages for now."                              |
+| `js_required`      | Under 250 words and the document is mostly `<script>`.                                                               | "This page needs a browser to render. Saved the link." |
+| `no_content`       | Readability returned nothing usable.                                                                                 | "Couldn't find an article here. Saved the link."       |
+| `server_error`     | Anything else. Logged to Sentry with the URL.                                                                        | "Something went wrong on our end." Retry.              |
 
 **Design rule: every one of these must be reachable and survivable.** A save
 that fails is never a spinner that never resolves and never a row that silently
@@ -474,6 +490,22 @@ re-litigate. Date, decision, reason.
   neither is configured. `lib/types.ts` must be replaced with generated output
   once `SUPABASE_DB_URL` works; until then it is kept in step with SCHEMA.sql by
   hand, which is exactly the kind of thing that rots.
+- **2026-09-09 — The fetcher is built on `node:http`, not `fetch`.** Three of
+  the section 5 guards need it: `fetch` has no socket-level `lookup` hook, so
+  guard 7 cannot be expressed on it; redirects have to be ours to follow so
+  guard 8 can re-validate each hop; and `node:http` consults no proxy
+  environment variables, which guard 12 requires. The cost is writing the
+  streaming, timeout and redirect handling by hand, which guard 9 wanted
+  anyway.
+- **2026-09-09 — Same-site canonical instead of registrable domain.** Section 6
+  step 1 explains the narrower test and what it costs. Revisit if a public
+  suffix list ever earns its place in `package.json`.
+- **2026-09-09 — A paywall is detected from the extracted body, not only from
+  its length.** A teaser padded with advertising furniture extracts as several
+  hundred words and clears any threshold for "stub"; the New York Times does
+  exactly this, and judging by length alone stores "we are checking your
+  access" as a two-minute read. The body is asked what it is before it is asked
+  how big.
 - **2026-09-09 — `docs/SCHEMA.sql` is the current schema, not a copy of the
   first migration.** It carries every correction later migrations made, so a
   fresh project needs one paste rather than a replay. Migrations stay

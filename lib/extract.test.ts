@@ -204,6 +204,22 @@ describe("metadata fallbacks", () => {
     expect(outcome.metadata.publishedAt).toBeNull();
   });
 
+  it("prefers a JSON-LD name over its headline", () => {
+    // Wikipedia writes the article title into name and its one-line
+    // description into headline, so taking headline first files "Common
+    // kingfisher" in the library under "species of bird".
+    const outcome = extractArticle({
+      url: "https://encyclopedia.example/kingfisher",
+      html:
+        "<html><head><title>Common kingfisher - Encyclopedia</title>" +
+        '<script type="application/ld+json">' +
+        '{"@type":"Article","name":"Common kingfisher","headline":"species of bird"}' +
+        "</script></head><body><p>Body.</p></body></html>",
+    });
+
+    expect(outcome.metadata.title).toBe("Common kingfisher");
+  });
+
   it("survives malformed JSON-LD without losing the rest of the page", () => {
     const outcome = extractArticle({
       url: "https://paper.example/post",
@@ -262,6 +278,33 @@ describe("failures", () => {
       expect(outcome.metadata.canonicalUrl).toBeTruthy();
       expect(outcome.metadata.urlHash).toMatch(/^[0-9a-f]{64}$/);
     }
+  });
+
+  it("calls a padded paywall notice paywalled however long it is", () => {
+    // The New York Times wraps its notice in advertising furniture and the
+    // whole thing extracts as four hundred words. Judging only by length
+    // stores "we are checking your access" as a two-minute read.
+    const filler = Array.from(
+      { length: 60 },
+      (_unused, index) =>
+        `<p>Advertisement number ${index} and some surrounding page furniture that ` +
+        `is neither the article nor anything the reader asked to keep.</p>`,
+    ).join("");
+
+    const outcome = extractArticle({
+      url: "https://paper.example/post",
+      html:
+        "<html><head><title>A real headline</title></head><body><article>" +
+        "<p>You have a preview view of this article while we are checking your " +
+        "access. When we have confirmed access, the full article content will " +
+        "load.</p>" +
+        filler +
+        "</article></body></html>",
+    });
+
+    const failed = expectFailed(outcome);
+    expect(failed.reason).toBe("paywalled");
+    expect(failed.metadata.title).toBe("A real headline");
   });
 
   it("prefers paywalled over js_required when a teaser is also script-heavy", () => {

@@ -1,7 +1,7 @@
 import { lookup as systemLookup } from "node:dns/promises";
 import http from "node:http";
 import https from "node:https";
-import { isIP } from "node:net";
+import { isIP, type LookupFunction } from "node:net";
 
 import { APP_NAME } from "@/lib/constants";
 import { publicEnv } from "@/lib/env";
@@ -561,6 +561,32 @@ function flattenHeaders(
 }
 
 /**
+ * The lookup handed to the socket, answering with the address we already
+ * judged and nothing else.
+ *
+ * Guard 7. The hostname still supplies the Host header and the TLS server
+ * name, so a record that changes a millisecond after our check cannot move the
+ * connection. This is the whole defence against DNS rebinding.
+ *
+ * Two call shapes, and getting it wrong fails at connect time rather than at
+ * type-check time. Node passes `{ all: true }` and expects an array back
+ * whenever autoSelectFamily is on, which it has been by default since Node 20;
+ * with `all` unset it expects a bare address and family. Answering the wrong
+ * one produces "Invalid IP address: undefined" on every request — and no test
+ * that injects a transport can see it, which is why this is its own function
+ * with its own test.
+ */
+export function pinnedLookup(address: string, family: 4 | 6): LookupFunction {
+  return (_hostname, options, callback) => {
+    if (options.all === true) {
+      callback(null, [{ address, family }]);
+    } else {
+      callback(null, address, family);
+    }
+  };
+}
+
+/**
  * node:http rather than fetch(), for three reasons that are all guards:
  * a socket-level `lookup` hook exists here and does not exist on fetch;
  * redirects are ours to follow rather than the runtime's; and node:http never
@@ -573,13 +599,8 @@ function nodeTransport(request: TransportRequest): Promise<TransportResponse> {
     method: "GET",
     headers: request.headers,
     signal: request.signal,
-    // Guard 7. The socket connects to the address we already judged. The
-    // hostname still supplies the Host header and the TLS server name, so a
-    // record that changes a millisecond after our check cannot move the
-    // connection. This is the whole defence against DNS rebinding.
-    lookup: (_hostname, _options, callback) => {
-      callback(null, request.address, request.family);
-    },
+    // Guard 7. The socket connects to the address we already judged.
+    lookup: pinnedLookup(request.address, request.family),
     // No pooling. A kept-alive socket outlives the check that approved the
     // address at the other end of it.
     agent: false,

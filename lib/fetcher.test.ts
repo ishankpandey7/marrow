@@ -8,6 +8,7 @@ import {
   TOTAL_TIMEOUT_MS,
   buildUserAgent,
   fetchPage,
+  pinnedLookup,
   type FetchOutcome,
   type FetchPageOptions,
   type LookupResult,
@@ -973,6 +974,51 @@ describe("request headers", () => {
     await run("https://example.com/post", { transport, lookup });
 
     expect(calls[0].headers["accept-encoding"]).toBe("identity");
+  });
+});
+
+describe("the pinned lookup", () => {
+  // The transport is injected everywhere above, so nothing else in this file
+  // touches the one function that actually decides where a socket goes. It
+  // failed silently in exactly this way once: Node calls it with { all: true }
+  // whenever autoSelectFamily is on, which it has been by default since Node
+  // 20, and a bare string answer fails every request with "Invalid IP address:
+  // undefined" — an error no injected-transport test can reach.
+  it("answers with an array when Node asks for all addresses", () => {
+    const lookup = pinnedLookup("93.184.216.34", 4);
+    const answers: unknown[] = [];
+
+    lookup("example.com", { all: true }, (error, address, family) => {
+      answers.push([error, address, family]);
+    });
+
+    expect(answers).toEqual([
+      [null, [{ address: "93.184.216.34", family: 4 }], undefined],
+    ]);
+  });
+
+  it("answers with a bare address when Node asks for one", () => {
+    const lookup = pinnedLookup("2606:2800:220:1:248:1893:25c8:1946", 6);
+    const answers: unknown[] = [];
+
+    lookup("example.com", {}, (error, address, family) => {
+      answers.push([error, address, family]);
+    });
+
+    expect(answers).toEqual([[null, "2606:2800:220:1:248:1893:25c8:1946", 6]]);
+  });
+
+  it("ignores the hostname it is given", () => {
+    // If it resolved the name it was handed, it would be a resolver rather
+    // than a pin, and the rebinding window would be back.
+    const lookup = pinnedLookup("93.184.216.34", 4);
+    const answers: unknown[] = [];
+
+    lookup("something-else.example", { all: true }, (_error, address) => {
+      answers.push(address);
+    });
+
+    expect(answers).toEqual([[{ address: "93.184.216.34", family: 4 }]]);
   });
 });
 

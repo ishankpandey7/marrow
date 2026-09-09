@@ -20,20 +20,27 @@ not check is worse than an unticked one, because next session it gets skipped.
 
 Kept current at the end of every session. Read this first; it is the handoff.
 
-**Last updated: 2026-09-09, end of Slice 1.**
+**Last updated: 2026-09-09, end of Slice 2.**
 
-- **Done:** Slice 0 complete. Slice 1 complete at 10 of 11 — magic-link
-  sign-in, saving a URL, and the list all work on the deployed site, confirmed
-  by hand.
-- **Half-done:** one Slice 1 box, and only because of elapsed time. A Supabase
-  access token lasts an hour, so the proxy's refresh path cannot be proven in
-  the same sitting as the sign-in that created it. Open `/inbox` more than an
-  hour after signing in; if it loads without a fresh sign-in, tick it. This
-  blocks nothing.
-- **Next:** Slice 2, the extraction pipeline. `lib/fetcher.ts` first, its tests
-  before its implementation, every guard in ARCHITECTURE §5.
-- **Needed from the human:** nothing. Accounts, keys, schema and deploy are all
-  in place.
+- **Done:** Slices 0 and 1. Slice 2 complete: `lib/fetcher.ts` with all
+  thirteen section 5 guards and 127 offline tests, `lib/sanitize.ts` with the
+  XSS corpus, `lib/extract.ts` with fixtures, and `POST /api/extract`. The
+  pipeline was run against live URLs; results in Notes from the field.
+- **Half-done:** the same Slice 1 box as before — open `/inbox` more than an
+  hour after signing in and tick it if the session refreshed. Still blocks
+  nothing.
+- **Read this before touching Slice 3:** _nothing drives `/api/extract` yet._
+  `save_item` queues a `fetch_jobs` row and the cron that claims it is Slice 7,
+  so on the deployed site a saved item stays `pending` and the row keeps saying
+  "Fetching the article" forever. Extraction itself resolves every item it is
+  asked to process; it is simply never asked. Either do Slice 7 next, or call
+  the route by hand while working on Slice 3.
+- **Not verified by hand:** `POST /api/extract` has never run against the real
+  database. Its columns and enum values were checked against `docs/SCHEMA.sql`
+  by eye and it typechecks, but the RLS read, the service-role write to
+  `item_content`, and the `items` check constraint have not been exercised. See
+  "What to verify by hand" under Slice 2.
+- **Needed from the human:** a decision on the `User-Agent`. See the Notes.
 - **Carrying forward, both tracked below:** `lib/types.ts` is hand-written and
   must be replaced by generated types once `SUPABASE_DB_URL` works; and the
   first `supabase db push` will need `migration repair`, because the schema was
@@ -179,24 +186,24 @@ verify against live URLs.
 
 ### Done when
 
-- [ ] `lib/fetcher.ts` implements **every** guard in ARCHITECTURE §5. Not a
+- [x] `lib/fetcher.ts` implements **every** guard in ARCHITECTURE §5. Not a
       subset.
-- [ ] Its tests were written before the implementation and cover, at minimum:
+- [x] Its tests were written before the implementation and cover, at minimum:
       private IPv4 ranges; IPv6 loopback and ULA; an IPv4-mapped IPv6 address;
       a redirect from a public host to `127.0.0.1`; a redirect chain longer
       than 3; a body exceeding 5 MB; a host that times out; a non-HTML
       content type; a URL with embedded credentials.
-- [ ] No test touches the network. DNS and the HTTP agent are injected.
-- [ ] Every route that calls the fetcher declares `runtime = 'nodejs'`.
-- [ ] `lib/sanitize.ts` has an XSS corpus that must not survive: `<script>`,
+- [x] No test touches the network. DNS and the HTTP agent are injected.
+- [x] Every route that calls the fetcher declares `runtime = 'nodejs'`.
+- [x] `lib/sanitize.ts` has an XSS corpus that must not survive: `<script>`,
       `onerror=`, `javascript:` href, `data:text/html` href, `<iframe>`,
       `<svg onload>`, `<form>`, a `style` with `expression()`.
-- [ ] `lib/extract.ts` produces title, author, site, publish date, lead image,
+- [x] `lib/extract.ts` produces title, author, site, publish date, lead image,
       lang, word count and reading time from HTML fixtures, offline.
-- [ ] All ten `fail_reason` values are reachable, and each has user-facing copy.
-- [ ] A failed extraction still leaves a saved item with its URL and a usable
+- [x] All ten `fail_reason` values are reachable, and each has user-facing copy.
+- [x] A failed extraction still leaves a saved item with its URL and a usable
       title. Never a ghost row, never a spinner that never resolves.
-- [ ] Run against four live URLs and record what happened for each in Notes
+- [x] Run against four live URLs and record what happened for each in Notes
       from the field: a normal news article, a hard paywall, a JavaScript-only
       SPA, and a URL that 404s. All four must fail gracefully or succeed
       cleanly — no crash, no hang, no leaked internal error.
@@ -215,6 +222,22 @@ arrive and abort mid-stream.
 
 Third: do not tell the user _why_ a URL was blocked. "Blocked: connection
 refused to 10.0.0.7" is a working port scanner with a nice UI.
+
+### What to verify by hand
+
+The route has never run against the real database. Sign in on the deployed
+site, save any URL, take its item id from `/inbox`, and:
+
+```
+curl -X POST https://marrow-bice.vercel.app/api/extract   -H 'content-type: application/json'   -b 'sb-…-auth-token=…'   -d '{"itemId":"<the uuid>"}'
+```
+
+Then check, in the SQL editor: the `items` row went to `ready` with a title,
+`word_count` and `reading_minutes`, and `fail_reason` is null; there is an
+`item_content` row for it with `extractor = 'readability@0.6.0'`; and the
+`fetch_jobs` row for that item is `done` rather than still `queued`. Repeat
+with a URL that 404s and confirm the row goes to `failed` with `not_found` and
+keeps its URL.
 
 ---
 
@@ -467,6 +490,69 @@ Append surprises here as they happen: parser quirks, provider limits, deploy
 traps. Be specific and date each entry. Future-you has no memory of this
 session, and the whole value of this section is that it records the things that
 are true but not written down anywhere else.
+
+### 2026-09-09 — Slice 2
+
+- **The pinned lookup was broken and no offline test could see it.** Guard 7
+  hands `node:http` a custom `lookup` so the socket connects to the address we
+  judged. Node calls that hook with `{ all: true }` and expects an **array**
+  back whenever `autoSelectFamily` is on, which it has been by default since
+  Node 20; the older bare-string shape fails every single request with
+  `Invalid IP address: undefined`. Every test injects a transport, so all 124
+  of them passed against a fetcher that could not fetch anything. It was the
+  live-URL run in this checklist that found it. `pinnedLookup` is now its own
+  exported function with its own tests for both call shapes.
+
+- **A descriptive `User-Agent` gets us blackholed by Akamai.** npr.org does not
+  refuse us and does not answer us: it accepts the TCP connection and sends
+  nothing, so we sit until the timeout and report `unreachable`. Isolated to
+  the header — the same request with no `User-Agent` gets a 301 in 250 ms, and
+  `Accept-Encoding: identity` is not the trigger. Guard 12 requires being
+  identifiable, so this is a product decision, not a bug: imitating Chrome
+  would get us in, and it is detection evasion. **Needs a human decision.**
+  Until then, sites behind that kind of bot management fail gracefully as
+  `unreachable` with a retry offered.
+
+- **A paywall teaser is not always short.** The New York Times wraps its notice
+  in advertising furniture and the whole thing extracts as 435 words, past any
+  sane threshold for "stub", and was stored as a clean two-minute article whose
+  entire content was "You have a preview view of this article while we are
+  checking your access." Length is not the signal; the body is now asked what
+  it _is_ before it is asked how big.
+
+- **linkedom lies twice, quietly, and the DOM types agree with it.**
+  `document.baseURI` and `documentURI` are unset after `parseHTML`, so
+  Readability resolves nothing and every relative link in a stored article
+  points at _our_ origin. And `parseHTML("<body>…</body>")` on a bare fragment
+  produces a document whose `body.textContent` is `""` — wrap the fragment in a
+  whole `<html>` document or the word count is silently zero. Neither shows up
+  as an error, and `document.documentElement` can be null where the DOM types
+  promise it cannot.
+
+- **schema.org `headline` is not always the headline.** Wikipedia puts the
+  title in `name` and the one-line description in `headline`, so taking
+  `headline` first filed "Common kingfisher" in the library under "species of
+  bird". `name` is read first now. Readability solves the same problem with a
+  text-similarity check against `<title>`, which is worth stealing if a site
+  turns up that breaks the simpler order.
+
+- **`sanitize-html` does not judge a URL with no scheme.** `allowedSchemes`
+  only inspects a URL that has one, so `href="/settings"` and
+  `href="//evil.example/x"` both survive it — and both resolve against our own
+  origin when the reading view renders them. `href` and `src` are now required
+  to be absolute http or https, which subsumes the scheme allowlist.
+
+- **Live results, the four required cases.** Guardian article: clean success,
+  1075 words, 5 min, full metadata. NYT: `paywalled`, title and link kept.
+  excalidraw.com: `js_required`. A missing Wikipedia page: `not_found`. No
+  crash, no hang, nothing internal in any user-facing string. The FT served a
+  free article on the first run and returned 403 (`forbidden`) on the third,
+  which is its own useful data point about repeated fetches.
+
+- **The Slice 2 fixtures are safe to reuse.** `test/fixtures/` has a news
+  article with a full metadata ladder, a paywall teaser, an SPA shell, a
+  bare-`<title>` post and a page with no article at all. Slice 3 will want the
+  first one.
 
 ### 2026-09-09 — Slice 1
 
