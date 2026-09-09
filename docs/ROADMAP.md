@@ -81,30 +81,34 @@ Slice 8.** It is listed there as a checkbox.
 to test the magic-link round trip.
 **Files:** `app/auth/`, `app/(app)/layout.tsx`, `app/(app)/inbox/page.tsx`,
 `app/api/save/route.ts`, `lib/canonical.ts`, `lib/canonical.test.ts`,
-`components/save-form.tsx`, `components/item-row.tsx`, `middleware.ts`
+`components/save-form.tsx`, `components/item-row.tsx`, `proxy.ts`
 **New dependencies:** none expected.
 
 ### Done when
 
 - [ ] Magic-link sign-in works end to end: enter email, receive mail, click,
-      land signed in. No password, no OAuth.
-- [ ] `middleware.ts` refreshes the session cookie; a signed-in user is not
-      logged out after an hour of use.
-- [ ] Server code uses `supabase.auth.getUser()`, never `getSession()`.
-- [ ] Visiting `/inbox` signed out redirects to sign-in and returns to `/inbox`
+      land signed in. No password, no OAuth. Needs a real inbox — see the note
+      on generateLink below for why it cannot be automated.
+- [ ] `proxy.ts` (Next 16 renamed `middleware.ts`) refreshes the session
+      cookie; a signed-in user is not logged out after an hour of use. Wired
+      and building; confirming it takes an hour of elapsed time.
+- [x] Server code uses `supabase.auth.getUser()`, never `getSession()`.
+- [x] Visiting `/inbox` signed out redirects to sign-in and returns to `/inbox`
       after the link is clicked.
-- [ ] `lib/canonical.ts` is pure — no network, no env, no database — and has
+- [x] `lib/canonical.ts` is pure — no network, no env, no database — and has
       tests: tracking params stripped, query order normalised, fragment dropped,
       default port dropped, trailing slash handled, hash is stable across all of
       them.
-- [ ] Save form accepts a URL, validates it client-side, and posts to
+- [x] Save form accepts a URL, validates it client-side, and posts to
       `/api/save`.
-- [ ] `/api/save` calls the `save_item` RPC. It does not hand-roll the upsert.
-- [ ] The saved item appears in the list immediately, in `pending` state.
-- [ ] The list renders on mobile first and looks deliberate at 375 px.
-- [ ] Empty state tells you what to do next, with an actual affordance. Not the
+- [x] `/api/save` calls the `save_item` RPC. It does not hand-roll the upsert.
+- [x] The saved item appears in the list immediately, in `pending` state.
+- [ ] The list renders on mobile first and looks deliberate at 375 px. The
+      sign-in page was checked at 375 px; the list itself needs a signed-in
+      session, so it is on the hand-verification list.
+- [x] Empty state tells you what to do next, with an actual affordance. Not the
       words "No items".
-- [ ] Signing in as a second user shows none of the first user's items.
+- [x] Signing in as a second user shows none of the first user's items.
 
 ### Gotcha — the re-save conflict case. Not optional.
 
@@ -432,6 +436,60 @@ Append surprises here as they happen: parser quirks, provider limits, deploy
 traps. Be specific and date each entry. Future-you has no memory of this
 session, and the whole value of this section is that it records the things that
 are true but not written down anywhere else.
+
+### 2026-09-09 — Slice 1
+
+- **`save_item` was broken for its entire reason to exist.** `case when ...
+then 'ready' else 'pending' end` assigned to an enum column raises 42804:
+  both branches are unknown-type literals, the CASE resolves to `text`, and
+  Postgres will not assign text to an enum. It never fired on a first save —
+  that takes the INSERT path and skips the CASE — so it only appeared on a
+  re-save, which is precisely the gotcha this slice is about. Fixed in
+  `0002_save_item_enum_cast.sql`; `test/schema.test.ts` now fails on an
+  uncast enum literal in a CASE branch.
+
+- **The verification that found it needs no email.**
+  `admin.generateLink({ type: 'magiclink' })` returns a `hashed_token`, and
+  `anon.verifyOtp({ token_hash, type: 'magiclink' })` turns that into a real
+  session. Two throwaway users, real JWTs, RLS genuinely in force. This is the
+  way to test anything user-scoped in later slices — reach for it before
+  reaching for the service role, which bypasses the thing you are testing.
+
+- **That same trick cannot drive the browser through sign-in.**
+  `generateLink` creates no PKCE challenge, so Supabase returns the session in
+  a URL _fragment_, which never reaches the server, while `/auth/callback`
+  expects `?code=` from the PKCE flow the app actually uses. End-to-end
+  sign-in therefore needs a real inbox.
+
+- **PKCE ties a magic link to one browser.** The exchange needs the code
+  verifier cookie written when the link was requested, so requesting on a
+  laptop and opening on a phone fails. The sign-in and callback copy both say
+  so, because the raw error sends people looking at their email provider.
+
+- **A `"use server"` module may only export async functions.** Exporting the
+  form's initial-state object from `app/auth/actions.ts` failed the build with
+  "found object". Constants and types moved to `app/auth/state.ts`.
+
+- **Next 16 renamed `middleware.ts` to `proxy.ts`** (function `middleware` to
+  `proxy`); the old name builds with a deprecation warning.
+  `npx @next/codemod@canary middleware-to-proxy .` does it automatically.
+
+- **Env validation had to become lazy.** Slice 0 validated at module load,
+  which was invisible while nothing imported `lib/db/`. Once real pages did,
+  `next build` — which walks every module — would have failed without
+  credentials, breaking both CI and any agent working without access to this
+  project. Getters move the throw to first use: still loud, still names the
+  variable, no longer at build time.
+
+- **Two lint-style tests have now been fooled by their own comments.** The
+  `.env.example` scanner found `NEXT_PUBLIC_X` in prose, and the enum-cast
+  scanner found the broken CASE inside the header explaining the fix. Strip
+  comments before scanning source for patterns.
+
+- **Applied migrations are frozen, so lints must not scan them.** `0001` still
+  contains the original uncast CASE, correctly — that is history. The enum lint
+  runs against `docs/SCHEMA.sql`, which is the current schema and where every
+  migration has to land anyway.
 
 ### 2026-09-06 — Slice 0 setup, environment facts
 
