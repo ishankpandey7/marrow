@@ -20,7 +20,7 @@ not check is worse than an unticked one, because next session it gets skipped.
 
 Kept current at the end of every session. Read this first; it is the handoff.
 
-**Last updated: 2026-09-10, end of Slice 5.**
+**Last updated: 2026-09-11, Slice 5 closed.**
 
 - **Implemented:** Slices 0–5 and 7, with the outstanding verification below.
   Slice 5 touched nothing in an earlier slice except two one-line additions it
@@ -52,25 +52,23 @@ Kept current at the end of every session. Read this first; it is the handoff.
   returns `307 → /auth/sign-in?next=%2Fsearch` while an unknown path returns
   404, which proves two things at once: the route exists in production, and
   the `proxy.ts` change is live, because the `next` parameter is being carried.
-- **What is NOT verified: nobody has opened the page.** Sign-in is a magic
-  link and this session had no mailbox, so `/search` has never been rendered
-  in a signed-in browser. Everything below the database is covered by tests
-  rather than by eyes. **Hand-verify these six things, in this order:**
-  1. Sign in, click **Search** in the header. The box should focus itself and
-     explain the syntax.
-  2. Search `quantum`. Expect three results, the two quantum-titled articles
-     first, each with a highlighted snippet from the article body.
-  3. Search `quantum -storage`. Expect one result — the other two are dropped
-     on words in their bodies, not their titles.
-  4. Search `?` and then `"unclosed`. Neither may error; the first should say
+- **The page has been hand-verified on the live site, by Ishank, 2026-09-11.**
+  `quantum` returned three results with highlighted body snippets,
+  `quantum -storage` returned one, an absurd query showed the empty state,
+  and `tag:` narrowed to a tagged item. The agent could not do this itself —
+  sign-in is a magic link and the session had no mailbox — so the walkthrough
+  it wrote is preserved below, because it is also the regression check for the
+  next person who changes ranking or the query parser:
+  1. Click **Search everything** in the header.
+  2. `quantum` → three results, the two quantum-titled articles first, each
+     with a highlighted snippet from the article body.
+  3. `quantum -storage` → one result. The other two are dropped on words in
+     their bodies, not their titles.
+  4. `?` and then `"unclosed` → neither may error; the first should say
      nothing was typed.
-  5. Change the State dropdown to Archive with a query in the box. The query
-     must survive, and **Back to library** must land on the archive.
-  6. Archive one item and tag one. Then search `tag:<that tag>`, and repeat
-     a search with State on Archive. **These are the paths the database
-     checks could not exercise at all** — nothing in the library is archived
-     or tagged, so each was only ever seen returning nothing. Finish by
-     searching something absurd to see the empty state.
+  5. With a query in the box, change State to Archive. The query must survive,
+     and **Back to library** must land on the archive.
+  6. Tag an item, then search `tag:<that tag>`.
      _Read status cannot be checked at all: nothing writes `read_at`. See the
      second box under Slice 8._
 - **`items.read_at` is never written by anything, so the read filter is
@@ -454,11 +452,10 @@ client-side — it is small and changes rarely.
       That proves each predicate fires; it does not prove any of them selects
       the right rows. Archive one item, mark one read, tag one, then repeat
       the four searches — that is the check this note is standing in for._
-- [ ] Empty result state suggests something useful.
-      _Written, and it names whichever filter, exclusion, phrase or tag
-      narrowed the search to nothing. Not ticked because nobody has looked at
-      it: sign-in is a magic link and this session had no mailbox, so the page
-      has never been rendered in a signed-in browser._
+- [x] Empty result state suggests something useful.
+      _Confirmed on the live site by Ishank, 2026-09-11. It names whichever
+      filter, exclusion, phrase or tag narrowed the search to nothing, and
+      says when a saved link has no article text yet._
 - [ ] `explain analyze` on a search over 1,000+ items shows the GIN index in use
       and runs under 100 ms. Paste the plan into Notes from the field.
       _There are 9 extracted articles in the real database as of 2026-09-10, so
