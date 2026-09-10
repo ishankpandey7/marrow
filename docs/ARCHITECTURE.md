@@ -471,6 +471,11 @@ optional. There is **no** fallback to a placeholder value anywhere.
 - **Rate limits** on `POST /api/save`, counted in Postgres against the user id.
   Without one, a single account can point our servers at an arbitrary number of
   hosts — we become someone's scanner, and our IP range takes the blame.
+  **Sixty accepted saves per rolling hour.** The counter is `save_events`, one
+  row per accepted save written inside `save_item()`; a rejected save writes
+  nothing, so the window drains instead of the lockout extending itself.
+  Rejection is a 429 with `Retry-After` and copy that says what happened —
+  never a 500, which tells someone to retry the thing that just failed.
 - **Zero secrets in committed files.** Not in tests, not in fixtures, not in
   comments, not in a `.env.example` that "just has the dev one".
 
