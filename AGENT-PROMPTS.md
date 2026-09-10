@@ -397,11 +397,13 @@ handoff and the push get forgotten.
 SLICE 6 — browser extension.
 
 Read the Slice 6 entry in docs/ROADMAP.md including the gotcha about
-permissions.
+permissions, and read "Where things stand" at the top first. Slices 0-5 and 7
+are done; do not re-verify any of them and do not fix anything you find in
+them — say so and stop, per house rule 2.
 
 Work in: extension/ (its own package.json and build), app/api/save/route.ts
 for CORS and token auth, and app/(app)/settings/extension/page.tsx for token
-generation.
+generation. Nothing else.
 
 Build exactly the Slice 6 checklist. Notes:
 
@@ -416,8 +418,47 @@ Build exactly the Slice 6 checklist. Notes:
 - Saving an already-saved page reports "already saved" and changes nothing.
   This exercises the Slice 1 gotcha through a second entry point — test it.
 
-You do not need my credentials. Unit-test the background logic, and tell me
-exactly how to load the unpacked extension and what to click to verify.
+Things that already exist, so you do not rediscover or duplicate them:
+
+- `EXTENSION_TOKEN_SECRET` is already in `.env.example` and already has a value
+  in `.env.local`. Nothing reads it yet. Use that variable — do not invent a
+  second one, and do not print its value.
+- `/settings` is already in PROTECTED_PREFIXES in `proxy.ts`, so the new
+  settings page needs no middleware change. `app/(app)/layout.tsx` already
+  guards the route group as well.
+- `app/api/save/route.ts` already does canonicalisation, dedupe through the
+  `save_item` RPC, and a Postgres-counted rate limit from Slice 7. Add CORS and
+  token auth around what is there. Do not rewrite it, and do not let the token
+  path skip the rate limit — the checklist requires it to be rate-limited
+  exactly as the web path is.
+- There is no OPTIONS handler on that route yet. You will need one for the
+  preflight.
+- If you need a table for tokens, the next free migration is **0005**. Run
+  `ls supabase/migrations/` before naming the file; two migrations sharing a
+  number fails test/schema.test.ts. Every new table needs RLS enabled and at
+  least one policy, or that same suite fails.
+- 484 tests pass right now. `npm run typecheck`, `npm run lint`, `npm test`.
+
+Two things about the current state, so you do not chase them:
+
+- Extraction runs on a DAILY cron; Vercel Hobby refuses anything more frequent.
+  A link you save will sit on "Fetching the article" and that is expected. The
+  list does not refresh itself either — both are known, both have boxes under
+  Slice 8.
+- Server-side Sentry does not work on the deployed app. Slice 0 fault, already
+  diagnosed, first box under Slice 8. Not yours.
+- `items.read_at` is never written by anything, so the read filter is dead.
+  Also Slice 8. Not yours.
+
+You do not need my credentials and you should not ask for any. Unit-test the
+background logic with an injected clock and injected fetch — no real network in
+tests. Then tell me exactly how to load the unpacked extension in Chrome and in
+Firefox, and what to click to verify each checklist line.
+
+Before you say you are done: run npm run typecheck, npm run lint and npm test
+and fix what they report. Then do the wrap-up in Part 4 of AGENT-PROMPTS.md —
+including rewriting "Where things stand" — commit, and push. Both the handoff
+and the push get forgotten.
 ```
 
 ---
@@ -495,33 +536,44 @@ full speed instead of spending its first twenty minutes re-deriving where
 things stand.
 
 ```
-We are wrapping up. Do these five things and nothing else — no new code, no
+We are wrapping up. Do these six things and nothing else — no new code, no
 refactors, no "one small fix while I am here".
 
-1. Tick the boxes in docs/ROADMAP.md that we actually completed and verified.
-   Leave partially-done items unticked with a one-line note on what is left.
-   Do not tick anything you did not check.
-2. Append anything surprising to "Notes from the field": parser quirks, a
+1. Tick the boxes in docs/ROADMAP.md that we actually completed AND verified.
+   Leave the rest unticked with a one-line note saying what is left and why.
+   Do not tick anything you did not watch pass. A ticked box nobody checked is
+   worse than an unticked one, because next session it gets skipped.
+2. If a box cannot be closed because of something outside this slice — no data,
+   no credentials, a plan limit — say that in the note instead of quietly
+   leaving it blank.
+3. Append anything surprising to "Notes from the field": parser quirks, a
    Supabase limit we hit, a deploy trap, a library that did not behave as
    documented. Be specific and date it. Future-me has no memory of this
    session.
-3. If we deviated from docs/ARCHITECTURE.md, update the doc to match reality
+4. If we deviated from docs/ARCHITECTURE.md, update the doc to match reality
    and add a line to the decisions log in §13.
-4. Run typecheck, lint and test one last time. Commit everything and push.
-5. Give me a five-line handoff: what is done, what is half-done, what to start
-   with next time, anything I need to do by hand, and anything you are unsure
-   about.
+5. **Rewrite "Where things stand" at the top of docs/ROADMAP.md so it
+   describes the end of THIS session.** Not a message to me — the file. Update
+   the "Last updated" line to name the slice just finished. It must say: what
+   is done, what is half-done and why, what I have to do by hand, what you are
+   unsure about, and what the next session should start with. Delete anything
+   in there that is no longer true; a stale line is worse than a missing one.
+   This is the part that gets skipped, and it is the part that matters most —
+   house rule 1 makes every agent read that file before writing anything, so
+   this is the only thing carrying context to the next session.
+6. Run typecheck, lint and test one last time. Commit everything, and PUSH.
+   Then paste me the output of `git status -sb` so I can see it is clean and
+   not ahead.
 ```
 
-That handoff goes into **"Where things stand" at the top of `docs/ROADMAP.md`**,
-not into a note you have to remember to carry. House rule 1 makes every agent
-read that file before writing anything, so the next session picks it up on its
-own.
+Everything the next session needs is now in the file, which means it needs
+**nothing from you but the slice prompt**. No summary of what was built, no
+list of what works, no re-explaining the architecture. If you find yourself
+typing any of that, the handoff was not written properly — fix the file rather
+than the message.
 
-Which means the next session needs **nothing from you but the slice prompt**.
-No summary of what was built, no list of what works, no re-explaining the
-architecture. If you find yourself typing any of that, the handoff was not
-written properly — fix the file rather than the message.
+If the agent gives you a nice five-line summary in chat but you cannot find it
+in `docs/ROADMAP.md`, the wrap-up did not happen. Ask again, naming the file.
 
 ---
 

@@ -100,11 +100,12 @@ Kept current at the end of every session. Read this first; it is the handoff.
   Slice 4 index and pagination boxes; the Slice 1 session-refresh box; the
   Slice 3 hand checks; and the `/reader-preview/[id]` keep-or-remove decision
   for Slice 8.
-- **Housekeeping owed, unchanged and still owed:** the Supabase database
-  password was printed into a session transcript by `npx`'s own echo of the
-  command line. **Rotate it** — Supabase, Settings, Database, Reset database
-  password — and update `SUPABASE_DB_URL` in `.env.local`. This slice called
-  the CLI by its full path throughout, which avoids the echo.
+- **The Supabase database password has been rotated — this is closed.** It
+  had been printed into a session transcript by `npx`'s own echo of the
+  command line; Ishank reset it and updated `SUPABASE_DB_URL`. The value now
+  in `.env.local` is the working one — every query in Slice 5 went through it.
+  Call the Supabase CLI by its full path rather than through `npx` and the
+  echo does not happen.
 - **Next: Slice 6 (browser extension) or Slice 8.** Slice 8 already owns
   splitting `components/filter-bar.tsx`; when that happens, give `filterUrl` a
   path so the search page can use the real `FilterBar` instead of its own
