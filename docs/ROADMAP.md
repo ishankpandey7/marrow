@@ -66,12 +66,17 @@ Kept current at the end of every session. Read this first; it is the handoff.
      nothing was typed.
   5. Change the State dropdown to Archive with a query in the box. The query
      must survive, and **Back to library** must land on the archive.
-  6. Archive one item, mark one read, and tag one. Then search `tag:<that
-     tag>`, and repeat a search with State on Archive and Read status on
-     Read. **These four are the paths the database checks could not exercise
-     at all** — nothing in the library is archived, read or tagged, so each
-     of them was only ever seen returning nothing. Finish by searching
-     something absurd to see the empty state.
+  6. Archive one item and tag one. Then search `tag:<that tag>`, and repeat
+     a search with State on Archive. **These are the paths the database
+     checks could not exercise at all** — nothing in the library is archived
+     or tagged, so each was only ever seen returning nothing. Finish by
+     searching something absurd to see the empty state.
+     _Read status cannot be checked at all: nothing writes `read_at`. See the
+     second box under Slice 8._
+- **`items.read_at` is never written by anything, so the read filter is
+  dead.** Found while hand-verifying this slice. It is a Slice 3/4 gap, not a
+  Slice 5 one, and it is written up as the second box under Slice 8 rather
+  than fixed here. Search inherits it: `read=read` can never return a row.
 - **Search only reads what has been fetched.** Titles, excerpts, authors and
   site names are searchable for every item; the article body only once
   extraction has run. With extraction on a daily cron a link saved an hour ago
@@ -615,7 +620,23 @@ fast as they like. Test the 401 by actually calling it from outside.
 
 ### Done when
 
-- [ ] Split `components/filter-bar.tsx` (872 lines) before launch.
+- [ ] Split `components/filter-bar.tsx` (872 lines) before launch. While it is
+      open: give `filterUrl` a path so `/search` can use the real `FilterBar`
+      instead of its own copy of three dropdowns, and offer "search everything
+      for this" when the on-page find comes up empty. The two search
+      affordances currently have nothing joining them, and the first person to
+      use search typed four full-text queries into the wrong box.
+- [ ] **`items.read_at` is never written by anything.** Found while verifying
+      Slice 5. The column is declared in 0001, three filters read it, the
+      library row and the search result both render "Read"/"Unread" from it —
+      and no code anywhere sets it. Not the reader, not a button, not a
+      function; `grep -rn read_at` finds no update, insert or upsert. So every
+      item is permanently Unread and `read=read` can never return a row, in
+      the library and in search alike. **This is a gap in Slice 3 or Slice 4,
+      and it was deliberately not fixed inside Slice 5** — a fix to somebody
+      else's slice buried in an unrelated diff is a fix nobody reviews. Decide
+      where it belongs: the reader marking an article read at some scroll
+      threshold, an explicit control on the row, or both.
 - [ ] Implement the guarded `/api/img` proxy from ARCHITECTURE §7 and switch
       reader images from opt-in source requests to automatic proxied lazy
       loading. Preserve the reserved frames, SSRF guards and failure states.
