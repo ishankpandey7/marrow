@@ -19,7 +19,7 @@ list of saved things is the product. Everything else serves it.
   reading time, and the article body as sanitised HTML.
 - A reading view that is genuinely nice to read on a phone.
 - Tags, archive, favourites.
-- Full-text search across title, excerpt and body.
+- Full-text search across title, excerpt, author, site name and body.
 - Export everything you have as JSON. No lock-in.
 
 **Explicitly not in scope, v1:**
@@ -379,6 +379,35 @@ disappears.
   existing ID. Bulk association is one insert; if it fails, an unused tag may
   remain and is reported. Rename conflicts reject instead of merging tags.
   Autocomplete uses the cached complete catalogue with no keystroke requests.
+
+### Search
+
+- `/search` takes `q` alongside the same `state`, `read`, `tag` and `page`
+  parameters the library takes, read by the same `parseFilters`. `searchUrl` is
+  built on `filterUrl` so the two cannot drift, and moving between the library
+  and the results keeps whatever was narrowed down. Both the `tag` parameter
+  and any `tag:` in the query are required tags, so they compose rather than
+  override.
+- `lib/search.ts` is pure and holds the whole query language: quoted phrases,
+  `-exclusion`, `tag:` and `-tag:`, `or`, and caps on length and token count.
+  Only structure leaves it. The strings it produces go to
+  `websearch_to_tsquery`, which never throws; `to_tsquery`, which does, is used
+  nowhere.
+- Exclusions are carried as a **separate** query, not as `!term` inside the
+  positive one. Search reads two tables, and a negation inside one index scan
+  says nothing about the other, so an exclusion is asked of the whole item.
+- `public.search_items` (0004) is the query. Title and body are indexed in
+  different tables, so each is asked separately — one lookup per GIN index —
+  and the answers are folded by item id. Metadata rank is `ts_rank_cd(…, 32)`,
+  body rank `ts_rank_cd(…, 1|32)`, combined as `meta + 0.4 * body` so that a
+  title match always outranks a body match. `ts_headline` runs after the LIMIT,
+  never before.
+- The function is SECURITY INVOKER and filters by nothing: RLS is the
+  authorisation model, as everywhere else. It must never become SECURITY
+  DEFINER, and EXECUTE is revoked from `service_role`, which bypasses RLS.
+- Snippets come back with matches wrapped in `chr(2)`/`chr(3)` and are split
+  into `<mark>` elements. Snippet text is article text from a page we did not
+  write and is never handed to a renderer as HTML.
 
 ### Reader state and fixture boundary
 

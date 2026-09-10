@@ -20,73 +20,84 @@ not check is worse than an unticked one, because next session it gets skipped.
 
 Kept current at the end of every session. Read this first; it is the handoff.
 
-**Last updated: 2026-09-10, end of Slice 7.**
+**Last updated: 2026-09-10, end of Slice 5.**
 
-- **Implemented:** Slices 0–4 and 7, with the outstanding verification below.
-  Slices 0–4 are summarised in git history; nothing in them was touched by
-  Slice 7 except `app/api/save/route.ts`, which gained the rate-limit check the
-  Slice 7 checklist requires.
-- **Slice 7 shipped in `8c67f4e`, `5843572`, `f562ddb` and the follow-up
-  below:** `supabase/migrations/0003_jobs.sql` adds `claim_fetch_jobs` (the
-  `for update skip locked` claim), `reclaim_stalled_fetch_jobs` and
-  `purge_deleted_items`, all executable by the service role alone.
-  `lib/queue.ts` holds the retry policy, the cron bearer check and the worker;
-  `app/api/cron/extract` and `app/api/cron/purge` are the routes;
-  `lib/rate-limit.ts` is the Postgres-counted save limit. 417 tests, typecheck,
-  lint and build all pass.
-- **Extraction now actually runs.** This closes the Slice 2 hand-verification:
-  the item update, the service-role write to `item_content` and the `items`
-  check constraint have all been exercised against the real database. A saved
-  Wikipedia article came back with title, excerpt, site name, 10.7 KB of
-  sanitised HTML and a reading time, and renders in the library.
-- **The migration needed `migration repair` first, as predicted.**
-  `supabase_migrations.schema_migrations` did not exist at all, because the
-  schema was applied through the SQL Editor. `save_item` was inspected first
-  and already had 0002's enum casts, so `migration repair --status applied 0001
-  0002 --db-url …` was correct; `db push` then applied 0003 alone, first time.
-- **The cron schedule is daily, and that is a plan limit.** Vercel's Hobby plan
-  refuses any cron more frequent than daily — a deploy carrying `* * * * *`
-  fails outright with that message. `vercel.json` now says `9 2 * * *` for
-  extract and `17 4 * * *` for purge, and Hobby fires those within a one-hour
-  window rather than on the minute. **A saved link can therefore wait a day for
-  its article.** Because of that, the extract route now drains the queue rather
-  than taking one batch of five. Slice 8 must decide: Vercel Pro, an external
-  scheduler hitting the route, or accept daily. Until then, a run can be forced
-  with `vercel crons run /api/cron/extract` or the Run button under Settings,
-  Cron Jobs.
-- **`CRON_SECRET` was rotated.** The value on Vercel was set two days ago and
-  is unreadable by anyone (Vercel will not return a Secret), so it was replaced
-  with the 64-hex value now in `.env.local`, on Production and Preview.
-- **Every Slice 7 box is ticked except the two about Sentry**, and those are
-  blocked on something older. Verified against the deployment since: two
-  invocations fired at the same instant claimed disjoint job sets with no job
-  processed twice; a job with a backdated `locked_at` was reclaimed on both
-  branches, including resolving the item when its attempts were spent; and the
-  purge deleted a 31-day-old item with its content and jobs while leaving a
-  5-day-old one alone.
-- **Server-side Sentry is dead on the deployed app, and it is a Slice 0 fault.**
-  `GET /api/debug-sentry` returns a 500 in production and produces no event —
-  that route exists to answer exactly this. The project holds three events over
-  24 hours, all from localhost. So extraction failures and `blocked_url` counts
-  are correct in the code and invisible in practice. It is written up as the
-  first box under Slice 8; **it was deliberately not fixed inside this slice**,
-  because a fix to Slice 0 wiring buried in a Slice 7 diff is a fix nobody
-  reviews. `await Sentry.flush(2000)` on the cron return paths was the first
-  guess, is correct practice for serverless, and is kept — but it is not the
-  cause, and the comment there says so.
+- **Implemented:** Slices 0–5 and 7, with the outstanding verification below.
+  Slice 5 touched nothing in an earlier slice except two one-line additions it
+  owed: `/search` in `PROTECTED_PREFIXES` in `proxy.ts`, and a Search link in
+  `app/(app)/layout.tsx`. Both are called out in the commits.
+- **Slice 5 shipped in `f24eb5d`, `9018ec9`, `5e099c7` and `0240db9`:**
+  `lib/search.ts` is the pure query parser, `supabase/migrations/0004_search.sql`
+  adds `public.search_items` and the `search_hit` row type it returns,
+  `app/(app)/search/page.tsx` is the route and `components/search-input.tsx` is
+  the box and the filters beside it. 484 tests, typecheck, lint and build all
+  pass. 0004 adds no columns and no indexes — both `search_tsv` columns and
+  both GIN indexes were already in 0001, and nothing was missing but the query.
+- **The design decision worth knowing before touching this.** Title and body
+  are indexed in two different tables, and an `OR` across a join uses neither
+  index. So each table is asked separately, one lookup per GIN index, and the
+  answers are folded by item id. Exclusions are a second tsquery applied to
+  both tables, because a `!term` inside the positive query would only ever have
+  meant "the title does not say it". Ranking constants were measured against
+  the nine real articles; the losing options and what they got wrong are in
+  Notes from the field, along with both `explain` plans.
+- **What is verified, and how.** Ranking, exclusion, phrases, `or`, the
+  `state`/`read`/`page` filters, pagination and the snippets were all exercised
+  against the real database through the function itself. Ownership was checked
+  as the `authenticated` role carrying each of the two profiles' JWT claims:
+  three hits for `quantum` on the account owning the articles, none on the
+  empty profile. `anon` and `service_role` are refused the function over HTTP.
+- **What is NOT verified: nobody has opened the page.** Sign-in is a magic
+  link and this session had no mailbox, so `/search` has never been rendered
+  in a signed-in browser. Everything below the database is covered by tests
+  rather than by eyes. **Hand-verify these six things, in this order:**
+  1. Sign in, click **Search** in the header. The box should focus itself and
+     explain the syntax.
+  2. Search `quantum`. Expect three results, the two quantum-titled articles
+     first, each with a highlighted snippet from the article body.
+  3. Search `quantum -storage`. Expect one result — the other two are dropped
+     on words in their bodies, not their titles.
+  4. Search `?` and then `"unclosed`. Neither may error; the first should say
+     nothing was typed.
+  5. Change the State dropdown to Archive with a query in the box. The query
+     must survive, and **Back to library** must land on the archive.
+  6. Tag any item, then search `tag:<that tag>` — **this is the one path the
+     database checks could not exercise, because the library has no tags.**
+     Then check the empty state by searching something absurd.
+- **Search only reads what has been fetched.** Titles, excerpts, authors and
+  site names are searchable for every item; the article body only once
+  extraction has run. With extraction on a daily cron a link saved an hour ago
+  is not findable by its text yet, and the empty state says so. Force a run
+  with `npx vercel crons run /api/cron/extract` from PowerShell.
+- **`gpu` does not match the title "AMD GPUs are climbing…".** The English
+  stemmer treats `GPUs` and `GPU` as different lexemes. It is the first thing
+  that will look like a bug and it is not one; the fix is a schema change and
+  belongs to a later slice. See Notes from the field.
+- **Slice 7 is unchanged and still done.** Its two unticked boxes are the
+  Sentry ones, and they belong to Slice 8, not here.
+- **Server-side Sentry is still dead on the deployed app, and still a Slice 0
+  fault.** `GET /api/debug-sentry` returns a 500 in production and produces no
+  event. First box under Slice 8. Deliberately not touched by this slice.
+- **The cron schedule is still daily, and that is still a Hobby plan limit.**
+  Vercel refuses anything more frequent. `vercel.json` says `9 2 * * *` for
+  extract and `17 4 * * *` for purge. Slice 8 must decide: Pro, an external
+  scheduler, or accept daily.
 - **Still carried forward from before:** `lib/types.ts` is hand-written and
   should be replaced with `supabase gen types` output now that
-  `SUPABASE_DB_URL` works; the Slice 4 index and pagination boxes; the Slice 1
-  session-refresh box; the Slice 3 hand checks; and the `/reader-preview/[id]`
-  keep-or-remove decision for Slice 8.
-- **Housekeeping owed:** the Supabase database password was printed into a
-  session transcript by `npx`'s own echo of the command line while running
-  `supabase migration list`. **Rotate it** — Supabase, Settings, Database,
-  Reset database password — and update `SUPABASE_DB_URL` in `.env.local`.
-- **Next: Slice 5 (search) can start**, with one caveat: there is very little
-  extracted content — the verification above deliberately purged one of the two
-  real articles to prove the cascade. Save a handful of links and force a run
-  with `vercel crons run /api/cron/extract` before judging ranking.
+  `SUPABASE_DB_URL` works — `SearchHit` in `lib/search.ts` and `search_hit` in
+  the schema are now a second pair that must be kept in step by hand; the
+  Slice 4 index and pagination boxes; the Slice 1 session-refresh box; the
+  Slice 3 hand checks; and the `/reader-preview/[id]` keep-or-remove decision
+  for Slice 8.
+- **Housekeeping owed, unchanged and still owed:** the Supabase database
+  password was printed into a session transcript by `npx`'s own echo of the
+  command line. **Rotate it** — Supabase, Settings, Database, Reset database
+  password — and update `SUPABASE_DB_URL` in `.env.local`. This slice called
+  the CLI by its full path throughout, which avoids the echo.
+- **Next: Slice 6 (browser extension) or Slice 8.** Slice 8 already owns
+  splitting `components/filter-bar.tsx`; when that happens, give `filterUrl` a
+  path so the search page can use the real `FilterBar` instead of its own
+  copy of three dropdowns.
 
 **Live:** <https://marrow-bice.vercel.app> · **Repo:** `ishankpandey7/marrow`
 
@@ -408,18 +419,27 @@ client-side — it is small and changes rarely.
 
 ### Done when
 
-- [ ] Full-text search across title, excerpt, author, site name and body, using
+- [x] Full-text search across title, excerpt, author, site name and body, using
       the `search_tsv` columns and GIN indexes already in the schema.
-- [ ] Ranking is weighted: a title match outranks a body match. Verified with
+- [x] Ranking is weighted: a title match outranks a body match. Verified with
       real saved articles, not with three fixtures.
-- [ ] The query parser is pure and tested: quoted phrases, `-exclusion`, and
+- [x] The query parser is pure and tested: quoted phrases, `-exclusion`, and
       `tag:foo` are understood, and a user typing `?` or `&` or an unbalanced
       quote does not produce a Postgres syntax error. Never interpolate user
       input into `to_tsquery`; use `websearch_to_tsquery`.
-- [ ] Result snippets show the match in context with the term highlighted, via
+- [x] Result snippets show the match in context with the term highlighted, via
       `ts_headline`.
-- [ ] Search combines with the Slice 4 filters rather than replacing them.
+- [x] Search combines with the Slice 4 filters rather than replacing them.
+      _`state`, `read` and `page` verified end to end. The tag half is only
+      half closed: both the dropdown's tag and `tag:foo` are passed as
+      required tags, and a tag no item carries correctly returns nothing, but
+      the library has no tags at all, so the matching path has never returned
+      a row. Tag an item and search `tag:<name>`._
 - [ ] Empty result state suggests something useful.
+      _Written, and it names whichever filter, exclusion, phrase or tag
+      narrowed the search to nothing. Not ticked because nobody has looked at
+      it: sign-in is a magic link and this session had no mailbox, so the page
+      has never been rendered in a signed-in browser._
 - [ ] `explain analyze` on a search over 1,000+ items shows the GIN index in use
       and runs under 100 ms. Paste the plan into Notes from the field.
       _There are 9 extracted articles in the real database as of 2026-09-10, so
@@ -427,7 +447,17 @@ client-side — it is small and changes rarely.
       against what exists, paste it, and leave the box unticked with the row
       count written next to it. Do not seed a thousand fake rows to tick it —
       a plan tuned against generated text says nothing about real articles._
-- [ ] Searching returns only your own items. Verified with two accounts.
+      **Done as instructed: both plans are in Notes from the field, taken at
+      12 items and 9 bodies. At that size the planner picks sequential scans,
+      as it should. With `enable_seqscan = off` the same query uses
+      `items_search_idx` and `item_content_search_idx`, which settles the
+      shape question in the Gotcha but not the size question in this box.**
+- [x] Searching returns only your own items. Verified with two accounts.
+      _Both real profiles, as the `authenticated` role carrying each one's JWT
+      claim, so the actual RLS policies did the filtering: the account owning
+      the nine articles got three hits for `quantum`, the second profile got
+      none. `anon` and `service_role` are both refused the function outright
+      over HTTP — see Notes from the field._
 
 ### Gotcha
 
@@ -639,6 +669,115 @@ Append surprises here as they happen: parser quirks, provider limits, deploy
 traps. Be specific and date each entry. Future-you has no memory of this
 session, and the whole value of this section is that it records the things that
 are true but not written down anywhere else.
+
+### 2026-09-10 — Slice 5
+
+- **The two `search_tsv` columns cannot be ORed together.** `where
+  i.search_tsv @@ q or c.search_tsv @@ q` across a join to `item_content`
+  reads best and uses neither GIN index — an OR spanning two relations is not
+  answerable from either table's index. Each table is asked separately instead
+  and the two answers folded by item id, which keeps one ordinary index lookup
+  per index. Denormalising the body into `items.search_tsv` was the other way
+  out and undoes the reason `item_content` exists.
+- **An exclusion folded into the positive query means the wrong thing.**
+  `websearch_to_tsquery('radeon -nvidia')` against `items.search_tsv` asks that
+  the *metadata* not say nvidia; the body stays free to. Exclusions are parsed
+  out in `lib/search.ts` and applied to both tables. Proof against the real
+  articles: `quantum` returns three, and `quantum -storage` returns one — the
+  other two are dropped on the strength of their bodies alone.
+- **`tag:foo` must be removed before the string reaches Postgres.** Left in,
+  `websearch_to_tsquery('tag:foo')` is `'tag' & 'foo'`, so the search quietly
+  looks for the word "tag" and finds nothing.
+- **Ranking normalisation, measured rather than chosen.** Body rank is
+  `ts_rank_cd(..., 1|32)`. Dividing by raw length (flag `2`) put the 425-word
+  TechSpot review, which says "version" once, above the 9,442-word PostgreSQL
+  article, which says it 39 times. Plain `ts_rank` with the same normalisation
+  scored every article in the corpus between 0.005 and 0.010 for every term
+  tried, which is no ordering at all. The chosen pair puts PostgreSQL top for
+  "version" and "support", the storage comparison top for "storage" and
+  "price", and PostgreSQL *last* for "price" — which it mentions in passing —
+  despite being twenty-two times longer than the article above it.
+- **The 0.4 body weight is load-bearing.** A title-only match scores 1.0 before
+  normalisation and 0.5 after, and a body rank cannot reach 1.0, so at 0.4 the
+  best possible body match still loses to any title match. It still beats a
+  match found only in an author (0.17) or a site name (0.09).
+- **The English stemmer does not depluralise an acronym.** `to_tsvector
+  ('english','GPUs')` is `'gpus'` and `'GPU'` is `'gpu'` — different lexemes.
+  So searching `gpu` does *not* match the title "AMD GPUs are climbing the
+  sales charts"; it matches that article on its body, where the singular
+  appears. Nothing here is broken, but it is the first thing that will look
+  broken to someone testing search, and no configuration in this slice fixes
+  it. Prefix matching or a second `simple` vector would, and both are schema
+  changes.
+- **`ts_headline` must run after the LIMIT.** It re-parses the whole document.
+  On the 9,442-word article that is the difference between one re-parse and
+  nine, and it is why the headline is computed in the final select over the
+  paged rows rather than anywhere earlier.
+- **`FragmentDelimiter` needs its quotes.** Written bare, the option parser
+  eats the surrounding spaces and snippets come back reading "making some
+  operations more...times faster". Quoting the value keeps them.
+- **Snippet markers are `chr(2)`/`chr(3)`, not `<mark>`.** A snippet is text
+  from someone else's web page and must never reach a renderer as HTML. The
+  page splits on the two control characters and emits `<mark>` elements.
+  Writing them as `chr()` in SQL and `String.fromCharCode` in TypeScript is
+  deliberate: literal control characters do not survive being copied between
+  a migration, a source file and a test, and they cost an hour proving it.
+- **`service_role` had EXECUTE on `search_items` by default and now does not.**
+  The function is SECURITY INVOKER and has no `user_id` check of its own by
+  design — RLS is the authorisation model — which means the service role,
+  whose whole purpose is bypassing RLS, would have returned every user's items
+  to whoever asked. Revoked. Confirmed over HTTP: `anon` gets 401 and
+  `service_role` 403, both `42501 permission denied for function`.
+- **Two accounts, at the database level.** As the `authenticated` role carrying
+  each profile's JWT claim, the account owning the nine articles gets three
+  hits for `quantum` and the second, empty profile gets none. That exercises
+  the real policies rather than reading them.
+- **0004 was applied, then amended, then the function alone re-applied.** The
+  fragment delimiter and the title-snippet branch were both wrong on the first
+  push. `supabase db push` will not re-run a recorded migration, so the amended
+  `create or replace function` was run on its own with `db query`. The file and
+  the database agree, and a fresh database applying 0004 gets the final
+  version — but the live one arrived in two steps, within this slice.
+- **`/search` had to be added to `PROTECTED_PREFIXES` in `proxy.ts`.** Without
+  it the layout still refused the page, but the redirect lost its `next`, so
+  signing in dumped you on the inbox instead of the search you were running.
+
+#### `explain analyze`, at 12 items and 9 extracted bodies
+
+Not the 1,000-item plan the checklist asks for; that box stays open. The
+function is a `Function Scan` to `explain`, so both plans below are of its
+body with `'quantum'` substituted. At this size both are dominated by fixed
+costs and say nothing about how it scales.
+
+Default planner — sequential scans, which is correct for a 12-row table:
+
+    Nested Loop Left Join  (cost=24.17..32.34 rows=4) (actual time=5.970..9.362 rows=3 loops=1)
+      ->  Limit  (actual time=2.953..2.959 rows=3 loops=1)
+            ->  Sort  Sort Key: score DESC, i.created_at DESC, i.id DESC
+                  ->  Hash Join  Hash Cond: (i.id = r.item_id)
+                        ->  Seq Scan on items i  (rows=12) Filter: deleted_at IS NULL AND archived_at IS NULL
+                        ->  GroupAggregate  Group Key: i_1.id
+                              ->  Append  (actual time=2.523..2.801 rows=5 loops=1)
+                                    ->  Seq Scan on items i_1  Filter: (search_tsv @@ 'quantum'::tsquery)
+                                    ->  Seq Scan on item_content c_1  Filter: (search_tsv @@ 'quantum'::tsquery)
+      ->  Index Scan using item_content_pkey on item_content c  (loops=3)
+    Planning Time: 20.773 ms
+    Execution Time: 10.172 ms
+
+`enable_seqscan = off` — the question the Gotcha actually asks, which is
+whether the *shape* lets the GIN indexes be used. It does, both of them:
+
+    ->  Append  (actual time=... rows=5 loops=1)
+          ->  Bitmap Heap Scan on items i_1  Recheck Cond: (search_tsv @@ 'quantum'::tsquery)
+                Heap Blocks: exact=2
+                ->  Bitmap Index Scan on items_search_idx  (actual time=1.364..1.364 rows=3)
+                      Index Cond: (search_tsv @@ 'quantum'::tsquery)
+          ->  Bitmap Heap Scan on item_content c_1  Recheck Cond: (search_tsv @@ 'quantum'::tsquery)
+                Heap Blocks: exact=1
+                ->  Bitmap Index Scan on item_content_search_idx  (actual time=0.088..0.088 rows=3)
+                      Index Cond: (search_tsv @@ 'quantum'::tsquery)
+    Planning Time: 0.650 ms
+    Execution Time: 11.602 ms
 
 ### 2026-09-09 — Slice 4
 
