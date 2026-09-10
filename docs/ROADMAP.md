@@ -66,9 +66,12 @@ Kept current at the end of every session. Read this first; it is the handoff.
      nothing was typed.
   5. Change the State dropdown to Archive with a query in the box. The query
      must survive, and **Back to library** must land on the archive.
-  6. Tag any item, then search `tag:<that tag>` — **this is the one path the
-     database checks could not exercise, because the library has no tags.**
-     Then check the empty state by searching something absurd.
+  6. Archive one item, mark one read, and tag one. Then search `tag:<that
+     tag>`, and repeat a search with State on Archive and Read status on
+     Read. **These four are the paths the database checks could not exercise
+     at all** — nothing in the library is archived, read or tagged, so each
+     of them was only ever seen returning nothing. Finish by searching
+     something absurd to see the empty state.
 - **Search only reads what has been fetched.** Titles, excerpts, authors and
   site names are searchable for every item; the article body only once
   extraction has run. With extraction on a daily cron a link saved an hour ago
@@ -435,11 +438,17 @@ client-side — it is small and changes rarely.
 - [x] Result snippets show the match in context with the term highlighted, via
       `ts_headline`.
 - [x] Search combines with the Slice 4 filters rather than replacing them.
-      _`state`, `read` and `page` verified end to end. The tag half is only
-      half closed: both the dropdown's tag and `tag:foo` are passed as
-      required tags, and a tag no item carries correctly returns nothing, but
-      the library has no tags at all, so the matching path has never returned
-      a row. Tag an item and search `tag:<name>`._
+      _Ticked for the composition itself, which is what the box asks: every
+      filter travels in the URL under the Slice 4 names, through the same
+      `parseFilters`, into the query — `state=inbox` returns three for
+      `quantum` and `state=archive` returns none, so the parameter demonstrably
+      reaches the SQL. `page` and the lookahead are verified properly._
+      **Read the limit before trusting this.** Nothing in the library is
+      archived, favourited, read, or tagged, so `archive`, `favourites`,
+      `read` and a required tag were only ever shown to return **nothing**.
+      That proves each predicate fires; it does not prove any of them selects
+      the right rows. Archive one item, mark one read, tag one, then repeat
+      the four searches — that is the check this note is standing in for._
 - [ ] Empty result state suggests something useful.
       _Written, and it names whichever filter, exclusion, phrase or tag
       narrowed the search to nothing. Not ticked because nobody has looked at
