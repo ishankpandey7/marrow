@@ -3,7 +3,7 @@
   "crons": [
     {
       "path": "/api/cron/extract",
-      "schedule": "* * * * *"
+      "schedule": "9 2 * * *"
     },
     {
       "path": "/api/cron/purge",

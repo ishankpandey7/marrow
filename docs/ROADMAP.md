@@ -20,86 +20,62 @@ not check is worse than an unticked one, because next session it gets skipped.
 
 Kept current at the end of every session. Read this first; it is the handoff.
 
-**Last updated: 2026-09-10, end of Slice 4.**
+**Last updated: 2026-09-10, end of Slice 7.**
 
-- **Implemented:** Slices 0–4, with the outstanding verification below.
-  Slice 2 shipped `lib/fetcher.ts` with all thirteen section 5 guards and 127 offline tests,
-  `lib/sanitize.ts` with the XSS corpus, `lib/extract.ts` with fixtures, and
-  `POST /api/extract`. The
-  pipeline was run against live URLs; results in Notes from the field.
-- **Slice 3 shipped in `999d425`:** the server-rendered reading view at
-  `/read/[id]`, with re-sanitized article HTML, deliberate typography, adjustable
-  font family and size, light/dark/sepia themes, device appearance until an
-  explicit choice, profile settings persistence, throttled reading progress
-  with restoration and a visibility-change flush, reserved image frames,
-  contained tables, designed failure states, keyboard controls and article text
-  without JavaScript. Build, typecheck, lint and all 322 tests have been
-  independently verified; no Slice 2 file was changed.
-- **Slice 4 shipped in `98e3c49`:** archive/unarchive, favourites, soft delete
-  with undo that stays available while the page is open, and optimistic
-  mutations that reconcile with server state and visibly roll back on failure.
-  Tags support normalized identity, creation, cached autocomplete, removal and
-  rename. State, tag and read-status filters live in the URL; the list has
-  50-row pagination, shift-click ranges, bulk archive/tag and keyboard triage.
-  `a`, then `e`, archives a page; `/` finds within the current page, with
-  full-library search still reserved for Slice 5. All 389 tests, typecheck,
-  lint and build have been independently verified, and no Slice 2 or Slice 3
-  file was touched.
-- **Slice 4 index box deliberately remains unticked:** run all 18 filter
-  variants in `docs/SLICE-4-EXPLAIN.sql` with real Supabase credentials and
-  representative saved items under authenticated RLS. Confirm the expected
-  `items_inbox_idx`, `items_archive_idx` and `items_favourites_idx` paths; a
-  sequential scan on `items` must be reviewed, not hidden with a planner switch
-  or an index added outside a migration.
-- **Slice 4 pagination box deliberately remains unticked:** page-20 query
-  bounds are tested, but closing this box needs live pagination latency at
-  1,000 saved items and the 200-unread-items-in-two-minutes keyboard triage
-  check. `docs/SLICE-4-VERIFY.md` also carries the remaining live persistence,
-  rollback, undo and phone/browser focus checks.
-- **Slice 3 image limitation:** publisher images need a tap to load and connect
-  directly to the source. Automatic proxied loading waits for the guarded
-  `/api/img` endpoint in Slice 8; the reserved frames already prevent layout
-  shifts.
-- **The reader preview is public and permanent:** `/reader-preview/[id]` is a
-  shipped fixture route, including on production, not a throwaway local page.
-  It needs no credentials and writes only to its own browser-storage namespace.
-  Start at `/reader-preview/longform`; the selector includes the existing
-  extraction fixtures, pending and all ten failure states. Slice 8 now requires
-  an explicit decision to keep or remove this route before launch.
-- **Extraction is still waiting for Slice 7:** _nothing drives `/api/extract`
-  yet._ `save_item` queues a `fetch_jobs` row and the cron that claims it is
-  Slice 7,
-  so on the deployed site a saved item stays `pending` and the row keeps saying
-  "Fetching the article" until extraction is invoked manually or Slice 7 ships.
-  Extraction itself resolves every item it is asked to process; it is simply
-  never asked automatically. The reader does not change this.
-- **Next: Slice 5 cannot start until there are real saved, extracted items.**
-  Getting those needs Slice 7 to drive the extraction queue. The likely order
-  is **4 → 7 → 5 → 6**; search ranking needs real content to verify.
-- **Not verified by hand:** `POST /api/extract` has never run against the real
-  database. Its columns and enum values were checked against `docs/SCHEMA.sql`
-  by eye and it typechecks, but the RLS read, the service-role write to
-  `item_content`, and the `items` check constraint have not been exercised. See
-  "What to verify by hand" under Slice 2.
-- **User-Agent decision settled:** no, we will not imitate a browser. Keep the
-  descriptive product-identifying agent required by ARCHITECTURE §5. Sites
-  that blackhole it may return `unreachable`; this is accepted behavior, not a
-  pending decision or a reason to disguise the fetcher.
-- **Slice 1 session-refresh box remains unticked:** open `/inbox` more than an
-  hour after signing in and tick it only if the session refreshed without a
-  fresh sign-in. Still blocks nothing.
-- **Slice 3 human hand checks:** read the 3,000-word fixture at phone width and
-  judge comfort; try Aa's families, sizes and three themes, device appearance
-  and a persisted explicit choice; scroll and reopen to check restoration;
-  check receding/reachable controls, J/K/Esc, tables scrolling within their own
-  container, image loading/unavailable states and complete text with JavaScript
-  disabled. The fixture catalogue uses browser persistence; checking live
-  profile settings and item progress requires `/read/<item UUID>` with actual
-  extracted content. The detailed hand-check guide remains under Slice 3.
-- **Carrying forward, both tracked below:** `lib/types.ts` is hand-written and
-  must be replaced by generated types once `SUPABASE_DB_URL` works; and the
-  first `supabase db push` will need `migration repair`, because the schema was
-  applied through the SQL Editor.
+- **Implemented:** Slices 0–4 and 7, with the outstanding verification below.
+  Slices 0–4 are summarised in git history; nothing in them was touched by
+  Slice 7 except `app/api/save/route.ts`, which gained the rate-limit check the
+  Slice 7 checklist requires.
+- **Slice 7 shipped in `8c67f4e`, `5843572`, `f562ddb` and the follow-up
+  below:** `supabase/migrations/0003_jobs.sql` adds `claim_fetch_jobs` (the
+  `for update skip locked` claim), `reclaim_stalled_fetch_jobs` and
+  `purge_deleted_items`, all executable by the service role alone.
+  `lib/queue.ts` holds the retry policy, the cron bearer check and the worker;
+  `app/api/cron/extract` and `app/api/cron/purge` are the routes;
+  `lib/rate-limit.ts` is the Postgres-counted save limit. 417 tests, typecheck,
+  lint and build all pass.
+- **Extraction now actually runs.** This closes the Slice 2 hand-verification:
+  the item update, the service-role write to `item_content` and the `items`
+  check constraint have all been exercised against the real database. A saved
+  Wikipedia article came back with title, excerpt, site name, 10.7 KB of
+  sanitised HTML and a reading time, and renders in the library.
+- **The migration needed `migration repair` first, as predicted.**
+  `supabase_migrations.schema_migrations` did not exist at all, because the
+  schema was applied through the SQL Editor. `save_item` was inspected first
+  and already had 0002's enum casts, so `migration repair --status applied 0001
+  0002 --db-url …` was correct; `db push` then applied 0003 alone, first time.
+- **The cron schedule is daily, and that is a plan limit.** Vercel's Hobby plan
+  refuses any cron more frequent than daily — a deploy carrying `* * * * *`
+  fails outright with that message. `vercel.json` now says `9 2 * * *` for
+  extract and `17 4 * * *` for purge, and Hobby fires those within a one-hour
+  window rather than on the minute. **A saved link can therefore wait a day for
+  its article.** Because of that, the extract route now drains the queue rather
+  than taking one batch of five. Slice 8 must decide: Vercel Pro, an external
+  scheduler hitting the route, or accept daily. Until then, a run can be forced
+  with `vercel crons run /api/cron/extract` or the Run button under Settings,
+  Cron Jobs.
+- **`CRON_SECRET` was rotated.** The value on Vercel was set two days ago and
+  is unreadable by anyone (Vercel will not return a Secret), so it was replaced
+  with the 64-hex value now in `.env.local`, on Production and Preview.
+- **Four Slice 7 boxes are deliberately unticked**, each with a note under the
+  slice saying exactly what is missing: the overlapping-invocation test, the
+  stale-lock reclaim, a purge that actually deletes a row, and Sentry events
+  from the deployment. **The Sentry one is the one to look at first** — three
+  real failures were produced on the deployment and none appeared in Sentry.
+  `await Sentry.flush(2000)` was added to every cron return path, which is the
+  usual cause and fix, but that fix has not itself been verified.
+- **Still carried forward from before:** `lib/types.ts` is hand-written and
+  should be replaced with `supabase gen types` output now that
+  `SUPABASE_DB_URL` works; the Slice 4 index and pagination boxes; the Slice 1
+  session-refresh box; the Slice 3 hand checks; and the `/reader-preview/[id]`
+  keep-or-remove decision for Slice 8.
+- **Housekeeping owed:** the Supabase database password was printed into a
+  session transcript by `npx`'s own echo of the command line while running
+  `supabase migration list`. **Rotate it** — Supabase, Settings, Database,
+  Reset database password — and update `SUPABASE_DB_URL` in `.env.local`.
+- **Next: Slice 5 (search) can start.** It needed real extracted content and
+  now there is some, though only a couple of articles; save a handful more and
+  force a cron run before judging ranking.
 
 **Live:** <https://marrow-bice.vercel.app> · **Repo:** `ishankpandey7/marrow`
 
@@ -494,22 +470,57 @@ anything, or change settings.
 
 - [ ] `/api/cron/extract` claims a batch with `for update skip locked` and
       processes it. Two overlapping invocations never process the same job.
-- [ ] Retries: 3 attempts, backoff 1 / 5 / 25 minutes, and **only** for
+      _Claiming and processing are verified live many times over. The overlap
+      half is not: every deployed run so far was triggered on its own, and no
+      two invocations have been fired at the same instant against a queue deep
+      enough to collide. The SQL is there and commented; the test is not._
+- [x] Retries: 3 attempts, backoff 1 / 5 / 25 minutes, and **only** for
       `unreachable` and `server_error`. A 404 is never retried.
+      Verified on the deployment, whole lifecycle — see Notes from the field.
+      The 25-minute step is unreachable while `max_attempts` is 3; that reading
+      is deliberate and recorded in ARCHITECTURE section 13.
 - [ ] A job stuck in `running` with a stale `locked_at` is reclaimed.
+      _Built (`reclaim_stalled_fetch_jobs`, both branches) and called at the
+      top of every extract run, which has always returned `reclaimed: 0`
+      because no worker has yet died mid-fetch. Producing one on demand means
+      backdating `locked_at` by hand; that has not been done._
 - [ ] `/api/cron/purge` hard-deletes items soft-deleted more than 30 days ago.
-- [ ] Every cron route rejects a request without `Authorization: Bearer
+      _The route runs on the deployment and answers `{"purged":0,"olderThan":
+      "30 days"}`. Nothing in this database is 30 days old, so the DELETE and
+      its cascade have never actually removed a row. Needs a soft-deleted item
+      with a backdated `deleted_at`, then a check that `item_content`,
+      `item_tags`, `highlights` and `fetch_jobs` went with it._
+- [x] Every cron route rejects a request without `Authorization: Bearer
 ${CRON_SECRET}` — verified by calling it from outside with curl and
-      getting a 401.
-- [ ] `vercel.json` schedules both jobs and they are visible as running in the
-      Vercel dashboard.
-- [ ] Rate limit on `/api/save`, counted in Postgres per user, with a documented
+      getting a 401. Both routes, and also for a wrong token and a wrong
+      scheme. `lib/queue.test.ts` pins the shapes curl cannot easily send.
+- [x] `vercel.json` schedules both jobs and they are visible as running in the
+      Vercel dashboard. Both appear under Settings, Cron Jobs, enabled, and
+      both have run — `GET /api/cron/purge` and `GET /api/cron/extract` are in
+      the deployment's runtime logs. **The schedule is daily, not per minute:
+      Hobby rejects anything more frequent. See the note below.**
+- [x] Rate limit on `/api/save`, counted in Postgres per user, with a documented
       limit and a `Retry-After` header on rejection. `lib/rate-limit.ts` is
       tested with an injected clock, not with `setTimeout`.
-- [ ] A save while over the limit gives a clear message, not a generic 500.
+      Sixty per rolling hour. Tripped deliberately on the deployment: `429`,
+      `Retry-After: 3345`.
+- [x] A save while over the limit gives a clear message, not a generic 500.
+      "That is 60 saves in an hour, which is the limit. Try again in 55
+      minutes." — shown in the save form, which already renders the error body.
 - [ ] Extraction failures reach Sentry with the URL and the failure code.
+      _Works from a local run against the real database: `cron/extract:
+      forbidden` is in Sentry. **Not confirmed from the deployment.** Three
+      real failures (`not_found`, `unreachable`, `blocked_url`) were produced
+      there and no matching event appeared. The likely cause is that a
+      serverless function is frozen on return before Sentry's batch is sent, so
+      `await Sentry.flush(2000)` was added to every cron return path — that fix
+      is deployed but has not itself been verified. Check this first._
 - [ ] `blocked_url` events are logged and countable — a spike means someone is
       probing the fetcher.
+      _The failure path is verified on the deployment: saving `127.0.0.1`
+      produced `failed` / `blocked_url` on the first attempt with no retry,
+      which is also the first live proof of the section 5 guards. Whether the
+      event reaches Sentry at `warning` level is blocked on the item above._
 
 ### Gotcha
 
@@ -892,3 +903,42 @@ authenticated`, so an anonymous reader sees nothing); and `save_item()` called
   landing path imports it. That is what lets CI build without secrets. If a
   build ever starts requiring a key, something on a static route has started
   importing the database layer.
+
+### 2026-09-10 — Slice 7
+
+- **`npx` echoes the command line, secrets and all.** `npx supabase migration
+  list --db-url "$DBURL"` printed the full connection string, password
+  included, through npm's own `npm notice run …` line. Calling the cached
+  binary directly avoids it. Anything secret goes in over stdin — `printf '%s'
+  "$SECRET" | vercel env add …` — never as an argument.
+- **Vercel Hobby refuses a cron more frequent than daily**, and it refuses it
+  at deploy time, not at schedule time: the whole deployment fails with
+  "Hobby accounts are limited to daily cron jobs". Worth knowing before writing
+  a per-minute design into `vercel.json`.
+- **A daily cron makes the batch size a throughput ceiling.** Five per run
+  times one run a day is five items a day. The route now keeps claiming rounds
+  until the queue is empty or a 40-second budget is spent.
+- **Vercel will not give a Secret env var back.** `vercel env pull` writes
+  `[SENSITIVE]` for them. If nobody wrote the value down, the only way to know
+  it again is to replace it.
+- **`vercel crons run <path>` triggers a cron through Vercel's own machinery**,
+  which means Vercel supplies the real bearer token. It is the only sane way to
+  test a daily cron. In Git Bash the leading slash gets mangled into a Windows
+  path — run it from PowerShell.
+- **A named composite type beats `returns table` for a claim function.** The
+  output names of `returns table` are in scope inside the body, and `item_id`,
+  `user_id` and `url` are all column names in the tables being queried.
+  `public.claimed_fetch_job` has no such scope.
+- **The retry ladder, observed on the deployment**, saving a host that does not
+  resolve: `attempts=1` requeued at +58s, `attempts=2` requeued at +298s,
+  `attempts=3` failed with `item=failed/unreachable`. A job whose `run_after`
+  is still in the future is not claimed — a run fired between the two was a
+  no-op. A 404 went straight to `failed` on attempt 1 and was never retried.
+- **Saving `127.0.0.1` is the cheapest live test of the section 5 guards**, and
+  the first one ever run against the deployment: `failed` / `blocked_url` on
+  attempt 1, no retry. Note that an agent's safety classifier will refuse to
+  type a cloud metadata address into a form, which is the correct instinct;
+  loopback tests the same guard.
+- **Re-saving an item that is already `ready` writes a `save_events` row and no
+  fetch job.** That makes it the right way to exercise the rate limit without
+  sending a single request to anyone else's server.

@@ -38,6 +38,18 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export const CLAIM_BATCH_SIZE = 5;
 
 /**
+ * How long one invocation keeps claiming new batches for.
+ *
+ * The batch size alone decides throughput only when the cron runs often. On
+ * Vercel's Hobby plan it runs once a day, and five items a day is not a queue,
+ * it is a queue-shaped ornament — so a run keeps draining until nothing is
+ * left. The budget stops it *starting* another round, and a round can still
+ * take a full fetch budget after that, which is why this sits well short of
+ * `maxDuration`: a run killed by the platform leaves its rows locked.
+ */
+export const DRAIN_BUDGET_MS = 40_000;
+
+/**
  * How long a `running` row may go untouched before it is assumed abandoned.
  *
  * A function that is behaving cannot hold one for longer than its own maximum

@@ -496,12 +496,23 @@ seconds for a page fetch to finish.
   unreachable site gives the user a final answer about six minutes after they
   saved rather than half an hour of "Fetching the article"; the 25-minute step
   is reached only by a row whose cap has been raised deliberately.
-- Vercel Cron drives `/api/cron/extract` every minute; each run claims a small
-  batch with `for update skip locked` so overlapping invocations cannot process
-  the same job twice. `attempts` increments at claim time, not at settle time:
-  a worker that dies mid-fetch has still spent an attempt.
-- The batch is five, fetched concurrently, so a run costs one fetch budget
-  rather than five and never approaches the platform's ceiling.
+- Vercel Cron drives `/api/cron/extract`; each run claims a small batch with
+  `for update skip locked` so overlapping invocations cannot process the same
+  job twice. `attempts` increments at claim time, not at settle time: a worker
+  that dies mid-fetch has still spent an attempt.
+- The batch is five, fetched concurrently, so a round costs one fetch budget
+  rather than five. A run keeps claiming rounds until the queue is empty or a
+  40-second budget is spent — throughput is the batch size times how often the
+  cron runs, and the schedule below makes "how often" small.
+- **The schedule is once a day, and that is a plan limit, not a design.**
+  Vercel's Hobby plan rejects any cron expression that would run more than
+  daily; a deployment carrying `* * * * *` fails outright. So `vercel.json`
+  says `9 2 * * *` for extract and `17 4 * * *` for purge, both UTC, and Hobby
+  additionally fires them within a one-hour window of that time rather than on
+  the minute. The practical cost is that a saved link can wait a day for its
+  article. The remedy is a plan or an external scheduler, not a code change:
+  the drain loop above is what makes a daily run tolerable meanwhile, and
+  ROADMAP.md carries this as a launch decision for Slice 8.
 - A `running` row whose `locked_at` has not moved for five minutes is a crashed
   worker. It goes back to the queue, or — if it stalled on its last attempt —
   the job is closed **and its item is resolved with it**, because a tidy job
@@ -620,3 +631,11 @@ re-litigate. Date, decision, reason.
   and that package throws outside a React Server Component, so the retry policy
   and the cron authorisation would only be testable through a route. It also
   puts the privilege at the call site, where a reader can see it.
+- **2026-09-10 — The extract cron drains, rather than taking one batch.** With
+  a per-minute schedule, throughput is the batch size times sixty an hour and a
+  fixed batch is fine. Vercel's Hobby plan allows only a daily cron, and five
+  items a day is not a queue. A run now keeps claiming until the queue is empty
+  or a 40-second budget is spent, which is correct under both schedules — the
+  budget stops it *starting* another round, well short of `maxDuration`,
+  because a run the platform kills leaves its rows locked for the stale-lock
+  window.

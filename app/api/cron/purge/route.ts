@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
       level: "error",
       tags: { route: "api/cron/purge" },
     });
+    await Sentry.flush(2000);
     return NextResponse.json(
       { error: "Cron is not configured." },
       { status: 500 },
@@ -55,6 +56,7 @@ export async function GET(request: NextRequest) {
     // A purge that fails silently is a retention policy that is not being
     // kept, and nothing in the product would ever show it.
     Sentry.captureException(error, { tags: { route: "api/cron/purge" } });
+    await Sentry.flush(2000);
     return NextResponse.json({ error: "Could not purge." }, { status: 500 });
   }
 }
