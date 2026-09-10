@@ -15,6 +15,7 @@ import type { Filters, Tag } from "./tags";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 import { SearchInput } from "@/components/search-input";
+import { Snippet } from "@/app/(app)/search/page";
 
 /**
  * The parser is the half of search that can be checked without a database, so
@@ -464,5 +465,39 @@ describe("the search input carries the filters, not just the query", () => {
     // filter.
     const markup = render("quantum", { tag: "deleted-tag-id" });
     expect(markup).toContain("Unavailable tag");
+  });
+});
+
+describe("rendering a snippet", () => {
+  const mark = (text: string) => `${HIGHLIGHT_START}${text}${HIGHLIGHT_END}`;
+  const render = (text: string) =>
+    renderToStaticMarkup(createElement(Snippet, { text }));
+
+  it("renders a snippet captured from the real database", () => {
+    // Copied from `search_items('quantum', ...)` against the nine saved
+    // articles, ellipsis and all, so the shape under test is the shape that
+    // actually arrives rather than one invented to pass.
+    const markup = render(
+      `probe (purple) laser beams. (Xinyue Lu) We already have ${mark("quantum")} computers, but they're highly specialized … ${mark("Quantum")} materials can host several competing electronic states`,
+    );
+    expect(markup).toContain("<mark");
+    expect(markup).toContain(">quantum</mark>");
+    expect(markup).toContain(">Quantum</mark>");
+    expect(markup).toContain(" … ");
+  });
+
+  it("never emits a control character into the document", () => {
+    const markup = render(`before ${HIGHLIGHT_START}after`);
+    expect(markup).not.toContain(HIGHLIGHT_START);
+    expect(markup).not.toContain(HIGHLIGHT_END);
+    expect(markup).not.toContain("<mark");
+  });
+
+  it("escapes article text instead of rendering it", () => {
+    // The snippet is somebody else's web page. If a marker ever let raw HTML
+    // through, this is the assertion that says so.
+    const markup = render(`a ${mark("<script>alert(1)</script>")} b`);
+    expect(markup).not.toContain("<script>");
+    expect(markup).toContain("&lt;script&gt;");
   });
 });

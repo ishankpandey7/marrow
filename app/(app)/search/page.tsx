@@ -24,8 +24,11 @@ const linkClass = "text-accent underline underline-offset-2";
  * characters. Splitting on them and rendering `<mark>` elements is the whole
  * reason it is done that way: the snippet is text lifted out of somebody
  * else's web page, and the one thing it must never be is HTML we render.
+ *
+ * Exported for lib/search.test.ts, which renders it against a snippet
+ * captured from the real database. Nothing else imports it.
  */
-function Snippet({ text }: { text: string }) {
+export function Snippet({ text }: { text: string }) {
   return (
     <p className="mt-1 text-sm leading-relaxed text-ink-dim">
       {highlightSegments(text).map((segment, index) =>
@@ -233,6 +236,15 @@ export default async function SearchPage({
   const required = resolveTags(parsed.tags, namedTags);
   const forbidden = resolveTags(parsed.excludedTags, namedTags);
 
+  // The dropdown's tag and any `tag:` in the query are the same kind of thing
+  // and both apply: choosing Physics and then typing `tag:optics` asks for
+  // items that are both, exactly as two words in the query do. Composing
+  // rather than replacing is the point — one of them winning would make the
+  // dropdown look broken from the search page and the query look ignored.
+  const requiredTagIds = [
+    ...new Set([...(filters.tag ? [filters.tag] : []), ...required.ids]),
+  ];
+
   let hits: SearchHit[] = [];
   let hasMore = false;
   let failed = false;
@@ -247,7 +259,7 @@ export default async function SearchPage({
     const { data, error } = await db.rpc("search_items", {
       include_query: parsed.include,
       exclude_query: parsed.exclude,
-      required_tags: required.ids,
+      required_tags: requiredTagIds,
       forbidden_tags: forbidden.ids,
       library_state: filters.state,
       read_filter: filters.read,
