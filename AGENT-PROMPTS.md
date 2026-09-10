@@ -288,80 +288,105 @@ Verification is npm test plus typecheck, lint and build.
 
 ### Slice 5 — search
 
-**Agent: either.** The pure half — the query parser and its tests — needs no
-credentials. The ranking half needs the live database, and whoever cannot reach
-it must say so rather than tune against fixtures.
+**Agent: Claude Code.** It needs the live database to tune ranking, and the
+credentials in `.env.local` are the ones that reach it.
+
+**Stop cleanly if the usage limit gets close.** The natural boundary is after
+`lib/search.ts` and `lib/search.test.ts` are green and committed: the pure half
+stands on its own, and the ROADMAP handoff carries the rest.
 
 ```
 SLICE 5 — search.
 
 Read the Slice 5 entry in docs/ROADMAP.md including the gotcha about
-to_tsquery, and read "Where things stand" at the top first.
+to_tsquery, and read "Where things stand" at the top first. Do not re-verify
+Slice 7 — it is finished, and its two unticked boxes belong to Slice 8.
 
 Work in: app/(app)/search/page.tsx, lib/search.ts, lib/search.test.ts,
 components/search-input.tsx, supabase/migrations/0004_search.sql.
 
+Build it in this order, and commit after each, so an interrupted session
+leaves something whole:
+
+  1. lib/search.ts + lib/search.test.ts — the pure query parser. No database.
+  2. The ranking query, checked against the real database.
+  3. The page and the input, composed with the Slice 4 URL filters.
+
 Notes:
 
 - The migration is 0004. The ROADMAP used to say 0002; that was written before
-  0002 and 0003 existed. Two migrations sharing a number fails
-  test/schema.test.ts. Check `ls supabase/migrations/` before you name a file.
+  0002 and 0003 existed, and two migrations sharing a number fails
+  test/schema.test.ts. Run `ls supabase/migrations/` before naming a file.
 
-- Do not create the search columns. They already ship in 0001_init.sql, and
-  they are two, in two tables:
+- Do not create the search columns. They already ship in 0001_init.sql, in two
+  tables:
     items.search_tsv        weighted setweight A=title, B=excerpt, C=author,
-                            D=site_name, with GIN index items_search_idx
-    item_content.search_tsv the article body, unweighted, with GIN index
+                            D=site_name, GIN index items_search_idx
+    item_content.search_tsv the article body, unweighted, GIN index
                             item_content_search_idx
-  So "a title match outranks a body match" is partly given to you and partly
-  the real design problem: the two live in different tables and have to be
-  combined into one ordering without losing either index. Solve that
-  deliberately and write down why you chose what you chose. Add 0004 only if
-  something is genuinely missing — and if it is, say what and why.
+  So "a title match outranks a body match" is half given to you and half the
+  real design problem: the two live in different tables and must combine into
+  one ordering without losing either index. Decide deliberately and write down
+  why. Add 0004 only if something is genuinely missing, and say what and why.
 
 - websearch_to_tsquery, never to_tsquery. Never interpolate user input into a
-  tsquery string. A person will type an unbalanced quote and to_tsquery throws.
+  tsquery string. Someone will type an unbalanced quote and to_tsquery throws.
 
-- The query parser is pure and tested offline: quoted phrases, -exclusion,
-  tag:foo. That half needs no database, so there is no excuse for it being
-  thin.
+- The parser is pure and tested offline: quoted phrases, -exclusion, tag:foo,
+  and junk like ? & ' that must not reach Postgres as syntax. No database
+  needed for any of it, so there is no excuse for it being thin.
 
 - Search composes with the Slice 4 filters in the URL rather than replacing
-  them. Read components/filter-bar.tsx before you design the interaction; do
-  not refactor it, it is already 872 lines and Slice 8 owns splitting it.
+  them. Read components/filter-bar.tsx before designing the interaction. Do NOT
+  refactor it — it is 872 lines and Slice 8 owns splitting it.
 
-- Ranking must be shown against real saved articles, not fixtures. There are 9
-  extracted articles in the database right now, 16,693 words, 425 to 9,442
-  words each, and two of them are about quantum physics — which is exactly the
-  pair that tells you whether your ordering is doing anything. Use them.
+- Tune ranking against the real articles, not fixtures. There are 9 extracted
+  articles, 16,693 words, 425 to 9,442 words each. Two are about quantum
+  physics and two about PC hardware — those pairs are what tell you whether the
+  ordering does anything. The 9,442-word PostgreSQL article against the
+  425-word TechSpot one is what tells you whether length normalisation works.
 
-- The checklist asks for `explain analyze` over 1,000+ items. That cannot be
+- The checklist wants `explain analyze` over 1,000+ items. That cannot be
   honestly closed at 9 articles. Run the plan against what exists, paste it
-  into Notes from the field with the row count written next to it, and leave
-  the box unticked. Do NOT seed a thousand generated rows to tick it.
+  into Notes from the field with the row count beside it, and leave the box
+  unticked. Do NOT seed a thousand generated rows to tick it.
 
-- If you cannot reach the database at all: build and test the pure half, leave
-  every live box unticked, and tell me exactly which commands you need me to
-  run. Do not invent a query plan, do not fabricate ranking results, and do not
-  tick a box you did not see pass. House rule 5.
+- "Searching returns only your own items" needs two accounts. There is a second
+  empty profile in the database already. If you cannot exercise it, leave the
+  box unticked and say so — do not reason it out from the policy and tick it.
+
+Tooling that already works, so you do not rediscover it:
+
+- Run SQL directly:
+    SB="C:/Users/LOQ/AppData/Local/npm-cache/_npx/aa8e5c70f9d8d161/node_modules/.bin/supabase"
+    DBURL=$(node -e "const fs=require('fs');process.stdout.write(fs.readFileSync('.env.local','utf8').split(/?
+/).find(l=>l.startsWith('SUPABASE_DB_URL=')).slice(16).trim())")
+    "$SB" db query "select ..." --db-url "$DBURL"
+  Call the binary by path, NOT through npx: npx prints the whole command line,
+  password included, in its own notice.
+
+- Reading rows is often faster over PostgREST with the service-role key from
+  .env.local than through the CLI.
+
+- Vercel CLI is logged in and the folder is linked. `npx vercel crons run
+  /api/cron/extract` forces an extraction run — from PowerShell, not Git Bash,
+  which mangles the leading slash into a Windows path.
 
 Two things about the current state, so you do not chase them:
 
-- Extraction runs on a DAILY cron, because Vercel Hobby refuses anything more
-  frequent. If you save links and they sit on "Fetching the article", that is
-  expected — force a run with `npx vercel crons run /api/cron/extract` from the
-  project folder, then reload the page. The list does not refresh itself; that
+- Extraction runs on a DAILY cron; Vercel Hobby refuses anything more frequent.
+  Links sitting on "Fetching the article" are expected — force a run with the
+  command above, then reload the page. The list does not refresh itself; that
   is a known gap with a box under Slice 8.
 
-- Server-side Sentry does not work on the deployed app. That is a Slice 0
-  fault, already diagnosed and written up as the first box under Slice 8. It is
-  not yours. Do not fix it inside this slice.
+- Server-side Sentry does not work on the deployed app. Slice 0 fault, already
+  diagnosed, first box under Slice 8. Not yours, do not fix it here.
 
 Before you say you are done: run npm run typecheck, npm run lint and npm test
 and fix what they report. Then update "Where things stand" at the top of
-docs/ROADMAP.md for the end of Slice 5, tick only the boxes you actually saw
-pass, append anything surprising to Notes from the field, commit, and push.
-Both the handoff and the push get forgotten.
+docs/ROADMAP.md for the end of Slice 5, tick only boxes you actually saw pass,
+append anything surprising to Notes from the field, commit, and push. Both the
+handoff and the push get forgotten.
 ```
 
 ### Slice 6 — browser extension
