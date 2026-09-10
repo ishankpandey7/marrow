@@ -489,15 +489,29 @@ seconds for a page fetch to finish.
 
 - `fetch_jobs` is the queue. A row per attempt-cycle, with `state`, `attempts`,
   `run_after` and `last_error`.
-- Retries: 3 attempts, exponential backoff (1 min, 5 min, 25 min), and only for
-  transient reasons — `unreachable` and `server_error`. Retrying a 404 is
-  someone else's server paying for our optimism.
+- Retries: only for transient reasons — `unreachable` and `server_error`.
+  Retrying a 404 is someone else's server paying for our optimism.
+- Backoff between attempts walks 1 min, 5 min, 25 min, and how far down that a
+  job goes is capped by its own `max_attempts` column. The default is 3, so an
+  unreachable site gives the user a final answer about six minutes after they
+  saved rather than half an hour of "Fetching the article"; the 25-minute step
+  is reached only by a row whose cap has been raised deliberately.
 - Vercel Cron drives `/api/cron/extract` every minute; each run claims a small
   batch with `for update skip locked` so overlapping invocations cannot process
-  the same job twice.
+  the same job twice. `attempts` increments at claim time, not at settle time:
+  a worker that dies mid-fetch has still spent an attempt.
+- The batch is five, fetched concurrently, so a run costs one fetch budget
+  rather than five and never approaches the platform's ceiling.
+- A `running` row whose `locked_at` has not moved for five minutes is a crashed
+  worker. It goes back to the queue, or — if it stalled on its last attempt —
+  the job is closed **and its item is resolved with it**, because a tidy job
+  table behind an item that still shows a spinner is the failure section 6
+  forbids.
 - `/api/cron/purge` runs daily and hard-deletes items soft-deleted over 30 days
-  ago.
-- Every cron route requires `Authorization: Bearer ${CRON_SECRET}`.
+  ago. `item_content`, `item_tags`, `highlights` and `fetch_jobs` cascade.
+- Every cron route requires `Authorization: Bearer ${CRON_SECRET}`, compared in
+  constant time. A route that finds the variable unset fails closed with a 500
+  and a Sentry event; it never treats "unconfigured" as "open".
 
 ---
 
@@ -587,3 +601,22 @@ re-litigate. Date, decision, reason.
   first migration.** It carries every correction later migrations made, so a
   fresh project needs one paste rather than a replay. Migrations stay
   forward-only and frozen; `0001` still contains the bug `0002` fixed.
+- **2026-09-10 — `max_attempts` caps the backoff schedule; the schedule does
+  not set the attempt count.** "3 attempts, backoff 1 / 5 / 25" reads two ways,
+  and the column won. A job runs, waits a minute, runs, waits five, runs, and
+  is then finished — a final answer roughly six minutes after saving, with the
+  retry button the taxonomy allows. The alternative reading spends half an hour
+  before admitting a site is down, which is a worse product for the same code.
+  The 25-minute step stays in the table because `max_attempts` is per row.
+- **2026-09-10 — The cron worker does not call `POST /api/extract`.** That
+  route runs as the signed-in user and is scoped by RLS, which is right for a
+  reader pressing Retry and impossible for a worker acting across every user's
+  rows. The two share the pipeline — `lib/fetcher`, `lib/extract`,
+  `lib/sanitize` — and duplicate the item and `item_content` writes, which
+  differ anyway in client and in job bookkeeping. Folding them together is
+  tracked for Slice 8 rather than done inside this one.
+- **2026-09-10 — `lib/queue.ts` takes its Supabase client as a parameter.**
+  Importing `lib/db/service.ts` would pull `server-only` into the module graph,
+  and that package throws outside a React Server Component, so the retry policy
+  and the cron authorisation would only be testable through a route. It also
+  puts the privilege at the call site, where a reader can see it.
