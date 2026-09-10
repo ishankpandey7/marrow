@@ -28,11 +28,17 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
           <span className="font-serif text-lg tracking-tight">{APP_NAME}</span>
 
           <div className="flex min-w-0 items-center gap-3">
+            {/* A bordered control rather than a text link, because the library
+                page already has a big centred box labelled "Find on this page"
+                and a small grey word loses to it every time. The first person
+                to use this typed four full-text queries into that box before
+                finding this one. Slice 8 owns joining the two properly; until
+                then the entry point at least has to look like a control. */}
             <a
               href="/search"
-              className="text-xs text-ink-dim transition-colors hover:text-ink"
+              className="shrink-0 rounded-md border border-edge px-3 py-1.5 text-sm whitespace-nowrap text-ink transition-colors hover:bg-ground-raised"
             >
-              Search
+              Search<span className="hidden sm:inline"> everything</span>
             </a>
             <span className="hidden truncate text-xs text-ink-faint sm:inline">
               {user.email}
