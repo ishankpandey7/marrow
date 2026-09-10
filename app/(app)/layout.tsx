@@ -28,6 +28,12 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
           <span className="font-serif text-lg tracking-tight">{APP_NAME}</span>
 
           <div className="flex min-w-0 items-center gap-3">
+            <a
+              href="/search"
+              className="text-xs text-ink-dim transition-colors hover:text-ink"
+            >
+              Search
+            </a>
             <span className="hidden truncate text-xs text-ink-faint sm:inline">
               {user.email}
             </span>

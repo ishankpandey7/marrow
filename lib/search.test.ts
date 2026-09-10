@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   EMPTY_SEARCH,
@@ -10,6 +12,9 @@ import {
   searchUrl,
 } from "./search";
 import type { Filters, Tag } from "./tags";
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+import { SearchInput } from "@/components/search-input";
 
 /**
  * The parser is the half of search that can be checked without a database, so
@@ -420,5 +425,44 @@ describe("highlightSegments", () => {
   it("merges runs so React is not handed a fragment per character", () => {
     const segments = highlightSegments(`${mark("a")}${mark("b")}`);
     expect(segments).toEqual([{ text: "ab", match: true }]);
+  });
+});
+
+describe("the search input carries the filters, not just the query", () => {
+  const tags: Tag[] = [{ id: "1e7f", name: "Physics", slug: "physics" }];
+  const render = (query: string, overrides: Partial<Filters> = {}) =>
+    renderToStaticMarkup(
+      createElement(SearchInput, {
+        query,
+        filters: { ...filters, ...overrides },
+        tags,
+      }),
+    );
+
+  it("shows what the URL is actually searching for", () => {
+    // The input is controlled and the component does not remount on
+    // navigation, so a query that does not survive Back is a real bug and an
+    // invisible one.
+    expect(render("quantum material")).toContain('value="quantum material"');
+  });
+
+  it("selects the filters the URL is applying", () => {
+    const markup = render("quantum", { state: "archive", read: "unread" });
+    expect(markup).toMatch(/<option value="archive" selected="">Archive/);
+    expect(markup).toMatch(/<option value="unread" selected="">Unread/);
+    expect(markup).not.toMatch(/<option value="inbox" selected="">/);
+  });
+
+  it("offers a way back to the library with the filters intact", () => {
+    const markup = render("quantum", { state: "favourites", read: "read" });
+    expect(markup).toContain('href="/inbox?state=favourites&amp;read=read"');
+  });
+
+  it("does not silently drop a tag filter it cannot name", () => {
+    // Tag IDs travel in shared URLs and outlive the tags themselves. Falling
+    // back to "All tags" would show a filtered list while claiming not to
+    // filter.
+    const markup = render("quantum", { tag: "deleted-tag-id" });
+    expect(markup).toContain("Unavailable tag");
   });
 });

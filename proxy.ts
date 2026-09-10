@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createProxySupabase } from "@/lib/db/proxy";
 
 /** Everything under these prefixes requires a session. */
-const PROTECTED_PREFIXES = ["/inbox", "/read", "/settings"];
+const PROTECTED_PREFIXES = ["/inbox", "/read", "/search", "/settings"];
 
 export async function proxy(request: NextRequest) {
   // The public, fixed fixture catalogue never reads a session or any user data.

@@ -1,4 +1,5 @@
 import { filterUrl, normalizeTag, type Filters, type Tag } from "@/lib/tags";
+import type { FailReason, ItemStatus } from "@/lib/types";
 
 /**
  * The query language, parsed offline.
@@ -306,6 +307,32 @@ export function searchUrl(query: string, filters: Filters): string {
   const params = new URLSearchParams(filterUrl(filters).split("?")[1] ?? "");
   params.set("q", query);
   return `/search?${params}`;
+}
+
+/**
+ * One row of `public.search_items`, in the order that function declares it.
+ * Hand-written for the same reason lib/types.ts is, and it must be kept in
+ * step with `public.search_hit` by hand until `supabase gen types` runs.
+ */
+export interface SearchHit {
+  id: string;
+  url: string;
+  title: string | null;
+  site_name: string | null;
+  excerpt: string | null;
+  reading_minutes: number | null;
+  status: ItemStatus;
+  fail_reason: FailReason | null;
+  created_at: string;
+  favourite: boolean;
+  archived_at: string | null;
+  read_at: string | null;
+  rank: number;
+  meta_rank: number;
+  body_rank: number;
+  snippet: string | null;
+  /** Which field the snippet was cut from: `body`, `excerpt` or `title`. */
+  snippet_source: string;
 }
 
 export interface Segment {
