@@ -47,6 +47,11 @@ Kept current at the end of every session. Read this first; it is the handoff.
   as the `authenticated` role carrying each of the two profiles' JWT claims:
   three hits for `quantum` on the account owning the articles, none on the
   empty profile. `anon` and `service_role` are refused the function over HTTP.
+- **It is deployed and the route is live.** The push built on Vercel in 26s
+  and is Ready in Production. `GET https://marrow-bice.vercel.app/search`
+  returns `307 → /auth/sign-in?next=%2Fsearch` while an unknown path returns
+  404, which proves two things at once: the route exists in production, and
+  the `proxy.ts` change is live, because the `next` parameter is being carried.
 - **What is NOT verified: nobody has opened the page.** Sign-in is a magic
   link and this session had no mailbox, so `/search` has never been rendered
   in a signed-in browser. Everything below the database is covered by tests
