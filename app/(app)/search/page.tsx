@@ -74,6 +74,11 @@ function Result({ hit }: { hit: SearchHit }) {
         <span>{hit.site_name ?? host}</span>
         <span aria-hidden="true">·</span>
         <span>{MATCH_LABEL[hit.snippet_source] ?? "Matched"}</span>
+        <span aria-hidden="true">·</span>
+        {/* The read filter is one of the four applied here, so a result that
+            does not say whether it has been read leaves the reader unable to
+            tell what the filter did. The library row says the same thing. */}
+        <span>{hit.read_at ? "Read" : "Unread"}</span>
         {hit.reading_minutes !== null && (
           <>
             <span aria-hidden="true">·</span>

@@ -781,6 +781,11 @@ create type public.search_hit as (
   favourite       boolean,
   archived_at     timestamptz,
   read_at         timestamptz,
+  -- rank is the sort key. meta_rank and body_rank are the two halves it was
+  -- built from, kept separate so that the next person to argue about ranking
+  -- can call this function and read the two numbers instead of re-deriving
+  -- them. Nothing renders them; the page has no business showing a relevance
+  -- score, and tuning is done from a SQL client.
   rank            real,
   meta_rank       real,
   body_rank       real,

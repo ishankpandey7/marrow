@@ -408,6 +408,14 @@ disappears.
 - Snippets come back with matches wrapped in `chr(2)`/`chr(3)` and are split
   into `<mark>` elements. Snippet text is article text from a page we did not
   write and is never handed to a renderer as HTML.
+- **There are deliberately two search affordances, and they are not the same
+  thing.** `/` in the library is Slice 4's find-on-this-page: a substring match
+  over the titles and URLs already on screen, which jumps to a row and touches
+  no server. `/search` is this: full text, every item, ranked. The library
+  keeps `/` because jumping to a row you can already see should not cost a
+  round trip. Nothing links `/` to `/search` today; when Slice 8 splits
+  `components/filter-bar.tsx`, offering "search everything for this instead"
+  when the on-page find comes up empty is the obvious join between them.
 
 ### Reader state and fixture boundary
 
