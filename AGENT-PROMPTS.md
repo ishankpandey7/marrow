@@ -288,35 +288,81 @@ Verification is npm test plus typecheck, lint and build.
 
 ### Slice 5 — search
 
-**Agent: Claude Code.** Save 50 or so real articles first, or the ranking is
-tuned against nothing.
+**Agent: either.** The pure half — the query parser and its tests — needs no
+credentials. The ranking half needs the live database, and whoever cannot reach
+it must say so rather than tune against fixtures.
 
 ```
 SLICE 5 — search.
 
 Read the Slice 5 entry in docs/ROADMAP.md including the gotcha about
-to_tsquery.
+to_tsquery, and read "Where things stand" at the top first.
 
-Work in: app/(app)/search/page.tsx, lib/search.ts,
-components/search-input.tsx, supabase/migrations/0002_search.sql.
+Work in: app/(app)/search/page.tsx, lib/search.ts, lib/search.test.ts,
+components/search-input.tsx, supabase/migrations/0004_search.sql.
 
-The search_tsv columns and GIN indexes already exist in 0001_init.sql. Use
-them; add a migration only if something is genuinely missing.
+Notes:
 
-Build exactly the Slice 5 checklist. Notes:
+- The migration is 0004. The ROADMAP used to say 0002; that was written before
+  0002 and 0003 existed. Two migrations sharing a number fails
+  test/schema.test.ts. Check `ls supabase/migrations/` before you name a file.
 
-- websearch_to_tsquery, never to_tsquery. User input is always malformed
-  eventually and to_tsquery throws on it.
-- Ranking must be verifiably weighted: a title match beats a body match. Show
-  me this with real saved items, not fixtures.
-- Search composes with the Slice 4 filters rather than replacing them.
+- Do not create the search columns. They already ship in 0001_init.sql, and
+  they are two, in two tables:
+    items.search_tsv        weighted setweight A=title, B=excerpt, C=author,
+                            D=site_name, with GIN index items_search_idx
+    item_content.search_tsv the article body, unweighted, with GIN index
+                            item_content_search_idx
+  So "a title match outranks a body match" is partly given to you and partly
+  the real design problem: the two live in different tables and have to be
+  combined into one ordering without losing either index. Solve that
+  deliberately and write down why you chose what you chose. Add 0004 only if
+  something is genuinely missing — and if it is, say what and why.
 
-Before you say you are done, run explain analyze on a search across my real
-items and paste the plan. I want to see the GIN index in the plan and the
-execution time. Add both to Notes from the field.
+- websearch_to_tsquery, never to_tsquery. Never interpolate user input into a
+  tsquery string. A person will type an unbalanced quote and to_tsquery throws.
+
+- The query parser is pure and tested offline: quoted phrases, -exclusion,
+  tag:foo. That half needs no database, so there is no excuse for it being
+  thin.
+
+- Search composes with the Slice 4 filters in the URL rather than replacing
+  them. Read components/filter-bar.tsx before you design the interaction; do
+  not refactor it, it is already 872 lines and Slice 8 owns splitting it.
+
+- Ranking must be shown against real saved articles, not fixtures. There are 9
+  extracted articles in the database right now, 16,693 words, 425 to 9,442
+  words each, and two of them are about quantum physics — which is exactly the
+  pair that tells you whether your ordering is doing anything. Use them.
+
+- The checklist asks for `explain analyze` over 1,000+ items. That cannot be
+  honestly closed at 9 articles. Run the plan against what exists, paste it
+  into Notes from the field with the row count written next to it, and leave
+  the box unticked. Do NOT seed a thousand generated rows to tick it.
+
+- If you cannot reach the database at all: build and test the pure half, leave
+  every live box unticked, and tell me exactly which commands you need me to
+  run. Do not invent a query plan, do not fabricate ranking results, and do not
+  tick a box you did not see pass. House rule 5.
+
+Two things about the current state, so you do not chase them:
+
+- Extraction runs on a DAILY cron, because Vercel Hobby refuses anything more
+  frequent. If you save links and they sit on "Fetching the article", that is
+  expected — force a run with `npx vercel crons run /api/cron/extract` from the
+  project folder, then reload the page. The list does not refresh itself; that
+  is a known gap with a box under Slice 8.
+
+- Server-side Sentry does not work on the deployed app. That is a Slice 0
+  fault, already diagnosed and written up as the first box under Slice 8. It is
+  not yours. Do not fix it inside this slice.
+
+Before you say you are done: run npm run typecheck, npm run lint and npm test
+and fix what they report. Then update "Where things stand" at the top of
+docs/ROADMAP.md for the end of Slice 5, tick only the boxes you actually saw
+pass, append anything surprising to Notes from the field, commit, and push.
+Both the handoff and the push get forgotten.
 ```
-
----
 
 ### Slice 6 — browser extension
 

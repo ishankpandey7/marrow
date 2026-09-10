@@ -398,7 +398,13 @@ client-side — it is small and changes rarely.
 
 **Agent:** Claude Code. Needs a live database with real rows to tune ranking.
 **Files:** `app/(app)/search/page.tsx`, `lib/search.ts`, `lib/search.test.ts`,
-`supabase/migrations/0002_search.sql`, `components/search-input.tsx`
+`supabase/migrations/0004_search.sql`, `components/search-input.tsx`
+
+> **Numbering corrected 2026-09-10.** This said `0002_search.sql`, written
+> before 0002 and 0003 existed. `test/schema.test.ts` fails on two migrations
+> sharing a number, so the next free one is `0004` — and it is needed only if
+> something is genuinely missing, because both `search_tsv` columns and both
+> GIN indexes already ship in `0001_init.sql`.
 
 ### Done when
 
@@ -416,6 +422,11 @@ client-side — it is small and changes rarely.
 - [ ] Empty result state suggests something useful.
 - [ ] `explain analyze` on a search over 1,000+ items shows the GIN index in use
       and runs under 100 ms. Paste the plan into Notes from the field.
+      _There are 9 extracted articles in the real database as of 2026-09-10, so
+      the 1,000-item half of this cannot be honestly closed yet. Run the plan
+      against what exists, paste it, and leave the box unticked with the row
+      count written next to it. Do not seed a thousand fake rows to tick it —
+      a plan tuned against generated text says nothing about real articles._
 - [ ] Searching returns only your own items. Verified with two accounts.
 
 ### Gotcha
@@ -590,6 +601,13 @@ fast as they like. Test the 401 by actually calling it from outside.
 - [ ] Colour contrast passes AA in every theme, including sepia.
 - [ ] Lighthouse: performance and accessibility both above 90 on mobile for the
       list and the reader.
+- [ ] **A `pending` item becomes `ready` on screen without a manual reload.**
+      Today the list is server-rendered and never re-checks, so a row keeps
+      saying "Fetching the article" until the reader presses F5 — even when the
+      article arrived twenty minutes ago. Slice 7 made this visible rather than
+      causing it: extraction now genuinely completes, so the stale row is the
+      only thing left lying. On a daily cron the lie can last a day. Poll only
+      while something on screen is pending, and stop when nothing is.
 - [ ] Every route has a designed loading state and a designed error boundary.
       No raw Next.js error pages in production.
 - [ ] 404 and 500 pages are designed.
