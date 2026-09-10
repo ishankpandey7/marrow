@@ -117,11 +117,15 @@ export async function GET(request: NextRequest) {
 
   for (const report of reports) record(report);
 
-  // Serverless functions are frozen the moment the response is returned, and
-  // Sentry batches. Without this the events queued just above are simply
-  // discarded — which is how a cron that logs every failure produces an empty
-  // Sentry project. Verified the hard way: the first deploy of this route
-  // reported nothing at all while doing the work correctly.
+  // A serverless function is frozen the moment it returns, and Sentry batches,
+  // so an event queued above can be dropped before it is ever sent. Flushing
+  // is the documented remedy and costs nothing when the queue is empty.
+  //
+  // It is *not* why this deployment reports nothing. Server-side Sentry is
+  // dead on the deployed app generally: /api/debug-sentry throws in production
+  // and produces no event either, and that route exists precisely to answer
+  // this question. A Slice 0 fault, tracked in ROADMAP.md, not one this slice
+  // reaches into and fixes.
   await Sentry.flush(2000);
 
   return NextResponse.json({

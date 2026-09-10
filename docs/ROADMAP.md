@@ -57,13 +57,23 @@ Kept current at the end of every session. Read this first; it is the handoff.
 - **`CRON_SECRET` was rotated.** The value on Vercel was set two days ago and
   is unreadable by anyone (Vercel will not return a Secret), so it was replaced
   with the 64-hex value now in `.env.local`, on Production and Preview.
-- **Four Slice 7 boxes are deliberately unticked**, each with a note under the
-  slice saying exactly what is missing: the overlapping-invocation test, the
-  stale-lock reclaim, a purge that actually deletes a row, and Sentry events
-  from the deployment. **The Sentry one is the one to look at first** — three
-  real failures were produced on the deployment and none appeared in Sentry.
-  `await Sentry.flush(2000)` was added to every cron return path, which is the
-  usual cause and fix, but that fix has not itself been verified.
+- **Every Slice 7 box is ticked except the two about Sentry**, and those are
+  blocked on something older. Verified against the deployment since: two
+  invocations fired at the same instant claimed disjoint job sets with no job
+  processed twice; a job with a backdated `locked_at` was reclaimed on both
+  branches, including resolving the item when its attempts were spent; and the
+  purge deleted a 31-day-old item with its content and jobs while leaving a
+  5-day-old one alone.
+- **Server-side Sentry is dead on the deployed app, and it is a Slice 0 fault.**
+  `GET /api/debug-sentry` returns a 500 in production and produces no event —
+  that route exists to answer exactly this. The project holds three events over
+  24 hours, all from localhost. So extraction failures and `blocked_url` counts
+  are correct in the code and invisible in practice. It is written up as the
+  first box under Slice 8; **it was deliberately not fixed inside this slice**,
+  because a fix to Slice 0 wiring buried in a Slice 7 diff is a fix nobody
+  reviews. `await Sentry.flush(2000)` on the cron return paths was the first
+  guess, is correct practice for serverless, and is kept — but it is not the
+  cause, and the comment there says so.
 - **Still carried forward from before:** `lib/types.ts` is hand-written and
   should be replaced with `supabase gen types` output now that
   `SUPABASE_DB_URL` works; the Slice 4 index and pagination boxes; the Slice 1
@@ -73,9 +83,10 @@ Kept current at the end of every session. Read this first; it is the handoff.
   session transcript by `npx`'s own echo of the command line while running
   `supabase migration list`. **Rotate it** — Supabase, Settings, Database,
   Reset database password — and update `SUPABASE_DB_URL` in `.env.local`.
-- **Next: Slice 5 (search) can start.** It needed real extracted content and
-  now there is some, though only a couple of articles; save a handful more and
-  force a cron run before judging ranking.
+- **Next: Slice 5 (search) can start**, with one caveat: there is very little
+  extracted content — the verification above deliberately purged one of the two
+  real articles to prove the cascade. Save a handful of links and force a run
+  with `vercel crons run /api/cron/extract` before judging ranking.
 
 **Live:** <https://marrow-bice.vercel.app> · **Repo:** `ishankpandey7/marrow`
 
@@ -468,28 +479,30 @@ anything, or change settings.
 
 ### Done when
 
-- [ ] `/api/cron/extract` claims a batch with `for update skip locked` and
+- [x] `/api/cron/extract` claims a batch with `for update skip locked` and
       processes it. Two overlapping invocations never process the same job.
-      _Claiming and processing are verified live many times over. The overlap
-      half is not: every deployed run so far was triggered on its own, and no
-      two invocations have been fired at the same instant against a queue deep
-      enough to collide. The SQL is there and commented; the test is not._
+      Verified on the deployment: six jobs queued, two invocations fired at the
+      same instant. One claimed `[16, 15, 13, 14, 17]`, the other claimed
+      `[18]` — disjoint, every job claimed exactly once, both returned in 6.4 s
+      with neither blocking on the other.
 - [x] Retries: 3 attempts, backoff 1 / 5 / 25 minutes, and **only** for
       `unreachable` and `server_error`. A 404 is never retried.
       Verified on the deployment, whole lifecycle — see Notes from the field.
       The 25-minute step is unreachable while `max_attempts` is 3; that reading
       is deliberate and recorded in ARCHITECTURE section 13.
-- [ ] A job stuck in `running` with a stale `locked_at` is reclaimed.
-      _Built (`reclaim_stalled_fetch_jobs`, both branches) and called at the
-      top of every extract run, which has always returned `reclaimed: 0`
-      because no worker has yet died mid-fetch. Producing one on demand means
-      backdating `locked_at` by hand; that has not been done._
-- [ ] `/api/cron/purge` hard-deletes items soft-deleted more than 30 days ago.
-      _The route runs on the deployment and answers `{"purged":0,"olderThan":
-      "30 days"}`. Nothing in this database is 30 days old, so the DELETE and
-      its cascade have never actually removed a row. Needs a soft-deleted item
-      with a backdated `deleted_at`, then a check that `item_content`,
-      `item_tags`, `highlights` and `fetch_jobs` went with it._
+- [x] A job stuck in `running` with a stale `locked_at` is reclaimed.
+      Verified on the deployment by backdating `locked_at` ten minutes — the
+      only way to produce a crashed worker on demand. Both branches: a job with
+      attempts left went back to `queued` and was picked up in the same run; a
+      job whose attempts were spent closed as `failed` with `last_error =
+      stalled` **and its item was resolved to `failed` / `server_error`**,
+      which is the half that stops a permanent spinner.
+- [x] `/api/cron/purge` hard-deletes items soft-deleted more than 30 days ago.
+      Verified on the deployment in both directions, with `deleted_at`
+      backdated by hand because this database is two days old. An item deleted
+      31 days ago was purged and took its `item_content` and `fetch_jobs` rows
+      with it through the cascade; an item deleted 5 days ago was left
+      completely untouched, which is what makes undo mean anything.
 - [x] Every cron route rejects a request without `Authorization: Bearer
 ${CRON_SECRET}` — verified by calling it from outside with curl and
       getting a 401. Both routes, and also for a wrong token and a wrong
@@ -508,19 +521,24 @@ ${CRON_SECRET}` — verified by calling it from outside with curl and
       "That is 60 saves in an hour, which is the limit. Try again in 55
       minutes." — shown in the save form, which already renders the error body.
 - [ ] Extraction failures reach Sentry with the URL and the failure code.
-      _Works from a local run against the real database: `cron/extract:
-      forbidden` is in Sentry. **Not confirmed from the deployment.** Three
-      real failures (`not_found`, `unreachable`, `blocked_url`) were produced
-      there and no matching event appeared. The likely cause is that a
-      serverless function is frozen on return before Sentry's batch is sent, so
-      `await Sentry.flush(2000)` was added to every cron return path — that fix
-      is deployed but has not itself been verified. Check this first._
+      _Correct from a local run against the real database — `cron/extract:
+      forbidden` is in Sentry with its URL. **Blocked on a Slice 0 fault, not a
+      Slice 7 one: server-side Sentry is dead on the deployed app entirely.**
+      `GET /api/debug-sentry` returns a 500 in production and produces no event
+      either, and that route exists in order to answer exactly this question.
+      Over 24 hours the project holds three events, all from localhost. Adding
+      `await Sentry.flush(2000)` to the cron return paths was the first guess;
+      it is correct practice for a serverless function and it is kept, but it
+      is not the cause. **Do not chase this inside a feature slice — see the
+      entry under Slice 8.**_
 - [ ] `blocked_url` events are logged and countable — a spike means someone is
       probing the fetcher.
-      _The failure path is verified on the deployment: saving `127.0.0.1`
-      produced `failed` / `blocked_url` on the first attempt with no retry,
-      which is also the first live proof of the section 5 guards. Whether the
-      event reaches Sentry at `warning` level is blocked on the item above._
+      _The failure path is verified on the deployment, twice: saving
+      `127.0.0.1` produced `failed` / `blocked_url` on the first attempt with
+      no retry, which is also the first live proof of the section 5 guards. The
+      route raises this one to `warning` where every other reason is `info`, so
+      a spike is countable. Whether the event actually arrives is the same
+      Slice 0 fault as the item above, and unticks with it._
 
 ### Gotcha
 
@@ -546,7 +564,19 @@ fast as they like. Test the 401 by actually calling it from outside.
 - [ ] Implement the guarded `/api/img` proxy from ARCHITECTURE §7 and switch
       reader images from opt-in source requests to automatic proxied lazy
       loading. Preserve the reserved frames, SSRF guards and failure states.
-- [ ] **`/api/debug-sentry` is deleted.** (Added in Slice 0 for exactly this.)
+- [ ] **Server-side Sentry does not work on the deployed app. Fix it before
+      anything else here, and in its own change.** Found during Slice 7:
+      `GET /api/debug-sentry` returns a 500 in production and no event ever
+      arrives, while the identical code reports fine from `next dev`. The
+      Sentry project holds only localhost events. Everything downstream of this
+      is affected — extraction failures, `blocked_url` counting, and the two
+      Slice 7 boxes that stay unticked because of it. `SENTRY_DSN` *is* set on
+      Production, so start elsewhere: whether `instrumentation.ts` `register()`
+      actually runs on Vercel under Next 16's Turbopack build, and whether
+      `withSentryConfig` instruments the server bundle there at all. Prove the
+      fix with `/api/debug-sentry` **before** deleting it.
+- [ ] **`/api/debug-sentry` is deleted** — after, and only after, it has been
+      used to prove the box above. (Added in Slice 0 for exactly this.)
 - [ ] **Decide whether `/reader-preview/[id]` stays or is removed before
       launch.** It is currently a public, permanent fixture route on production;
       record the decision and carry it out deliberately.
@@ -942,3 +972,20 @@ authenticated`, so an anonymous reader sees nothing); and `save_item()` called
 - **Re-saving an item that is already `ready` writes a `save_events` row and no
   fetch job.** That makes it the right way to exercise the rate limit without
   sending a single request to anyone else's server.
+- **`/api/debug-sentry` earned its keep.** Three deployed extraction failures
+  produced no Sentry events, and the obvious explanation — a serverless
+  function frozen before the SDK flushes — was wrong. Hitting the Slice 0 debug
+  route settled it in one request: server-side Sentry is not working on the
+  deployment at all. A route that exists only to answer "does capture work
+  here" is worth the line in the launch checklist.
+- **A crashed worker has to be manufactured.** There is no way to make a
+  serverless function die mid-fetch on demand, so the stale-lock reclaim is
+  tested by backdating `locked_at`. Same for the purge: nothing in a two-day-old
+  database is thirty days old, so `deleted_at` gets backdated. Both are honest
+  tests of the real code path against the real database — just note in the
+  handoff that the clock was the thing that was faked, not the behaviour.
+- **Re-queueing a `fetch_jobs` row for a settled item is the Retry button that
+  does not exist yet.** It is also the cheapest way to produce a specific
+  failure on the deployment without saving new URLs or spending anyone else's
+  bandwidth. `fetch_jobs_one_open_per_item` keeps it safe: the insert only
+  succeeds when nothing is already open for that item.
