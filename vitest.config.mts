@@ -7,7 +7,11 @@ export default defineConfig({
     // Node, not jsdom. Everything under test so far is pure logic or file
     // contents. A slice that adds component tests adds the environment then.
     environment: "node",
-    include: ["lib/**/*.test.ts", "test/**/*.test.ts"],
+    include: [
+      "lib/**/*.test.ts",
+      "test/**/*.test.ts",
+      "extension/**/*.test.ts",
+    ],
   },
   resolve: {
     alias: {

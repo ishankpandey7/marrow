@@ -95,6 +95,14 @@ export function decideRateLimit(
 /** Injected so tests never reach for the wall clock. */
 export type Clock = () => number;
 
+/** Every call explicitly chooses how its database read is scoped. */
+export type SaveRateLimitScope =
+  | { readonly kind: "session"; readonly client: SupabaseClient }
+  | {
+      readonly kind: "user";
+      readonly client: SupabaseClient;
+      readonly userId: string;
+    };
 export interface SaveRateLimitOptions {
   readonly now?: Clock;
   readonly limit?: number;
@@ -104,10 +112,14 @@ export interface SaveRateLimitOptions {
 /**
  * Read this user's accepted saves inside the window and decide.
  *
- * Deliberately uses the caller's own RLS-scoped client, not the service role:
- * `save_events_select_own` already restricts the read to the signed-in user,
- * so the query needs no user id in it and cannot be made to count somebody
- * else's rows by getting that filter wrong. save_events_window_idx covers it.
+ * Scope is required; there is no default. The session form uses the caller's
+ * RLS-scoped client and adds no user-id filter: save_events_select_own still
+ * restricts that read. The service-role path must use the user form, whose
+ * userId is required and comes from the verified token owner, never request
+ * input. The query always applies that form's userId before reading events;
+ * it is not an optional filter a caller can forget. Both forms use the same
+ * window query and decideRateLimit arithmetic. save_events_window_idx covers
+ * both reads.
  *
  * Only `limit + 1` rows are fetched. Anything beyond that changes no decision:
  * the request is rejected either way, and the extra rows would only refine a
@@ -119,7 +131,7 @@ export interface SaveRateLimitOptions {
  * which is honest about which of the two it is.
  */
 export async function checkSaveRateLimit(
-  client: SupabaseClient,
+  scope: SaveRateLimitScope,
   options: SaveRateLimitOptions = {},
 ): Promise<RateLimitDecision> {
   const now = options.now ?? Date.now;
@@ -128,9 +140,13 @@ export async function checkSaveRateLimit(
 
   const at = now();
 
-  const { data, error } = await client
-    .from("save_events")
-    .select("created_at")
+  let query = scope.client.from("save_events").select("created_at");
+  if (scope.kind === "user") {
+    if (!scope.userId) throw new Error("A verified user id is required.");
+    query = query.eq("user_id", scope.userId);
+  }
+
+  const { data, error } = await query
     .gte("created_at", new Date(at - windowMs).toISOString())
     .order("created_at", { ascending: true })
     .limit(limit + 1);

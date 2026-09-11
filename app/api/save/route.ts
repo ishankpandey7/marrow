@@ -4,8 +4,20 @@ import * as Sentry from "@sentry/nextjs";
 
 import { InvalidUrlError, canonicalise } from "@/lib/canonical";
 import { createServerSupabase } from "@/lib/db/server";
-import { checkSaveRateLimit } from "@/lib/rate-limit";
+import { createServiceSupabase } from "@/lib/db/service";
+import { checkSaveRateLimit, type SaveRateLimitScope } from "@/lib/rate-limit";
 import type { Item } from "@/lib/types";
+import {
+  extensionTokenSecret,
+  findExtensionTokenOwner,
+  isExtensionToken,
+} from "@/extension/server/tokens";
+import {
+  isExtensionOrigin,
+  isSaveOriginAllowed,
+  isSavePreflightAllowed,
+  saveCorsHeaders,
+} from "@/extension/server/cors";
 
 // canonicalise() hashes with node:crypto, which the Edge runtime does not have.
 export const runtime = "nodejs";
@@ -30,21 +42,68 @@ function describeWait(seconds: number): string {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createServerSupabase();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+  const origin = request.headers.get("origin");
+  const cors = saveCorsHeaders(origin, request.nextUrl.origin);
+  const respond = (body: unknown, init?: ResponseInit) => {
+    const response = NextResponse.json(body, init);
+    cors.forEach((value, key) => response.headers.set(key, value));
+    return response;
+  };
+  if (!isSaveOriginAllowed(origin, request.nextUrl.origin)) {
+    return respond({ error: "Origin not allowed." }, { status: 403 });
   }
+
+  let scope: SaveRateLimitScope;
+  try {
+    const authorization = request.headers.get("authorization");
+    if (authorization !== null) {
+      const token = /^Bearer (.+)$/i.exec(authorization)?.[1];
+      if (!token || !isExtensionToken(token)) {
+        return respond({ error: "Invalid save token." }, { status: 401 });
+      }
+      const client = createServiceSupabase();
+      const userId = await findExtensionTokenOwner(
+        client,
+        token,
+        extensionTokenSecret(),
+      );
+      if (!userId) {
+        return respond(
+          { error: "Invalid or revoked save token." },
+          { status: 401 },
+        );
+      }
+      // The same verified owner scopes both the count and the implementation.
+      // A bearer failure never falls back to ambient session cookies.
+      scope = { kind: "user", client, userId };
+    } else {
+      if (origin && isExtensionOrigin(origin)) {
+        return respond({ error: "A save token is required." }, { status: 401 });
+      }
+      const client = await createServerSupabase();
+      const {
+        data: { user },
+      } = await client.auth.getUser();
+      if (!user) {
+        return respond({ error: "Not signed in." }, { status: 401 });
+      }
+      scope = { kind: "session", client };
+    }
+  } catch (error) {
+    Sentry.captureException(error, { tags: { route: "api/save" } });
+    return respond(
+      { error: "Could not save that just now. Try again." },
+      { status: 500 },
+    );
+  }
+
+  const supabase = scope.client;
 
   let payload: unknown;
   try {
     payload = await request.json();
   } catch {
-    return NextResponse.json({ error: "Expected JSON." }, { status: 400 });
+    return respond({ error: "Expected JSON." }, { status: 400 });
   }
 
   const raw =
@@ -53,7 +112,7 @@ export async function POST(request: NextRequest) {
       : undefined;
 
   if (typeof raw !== "string") {
-    return NextResponse.json({ error: "A url is required." }, { status: 400 });
+    return respond({ error: "A url is required." }, { status: 400 });
   }
 
   let canonical;
@@ -61,7 +120,7 @@ export async function POST(request: NextRequest) {
     canonical = canonicalise(raw);
   } catch (error) {
     if (error instanceof InvalidUrlError) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return respond({ error: error.message }, { status: 400 });
     }
     throw error;
   }
@@ -73,10 +132,10 @@ export async function POST(request: NextRequest) {
   // what lets the window drain instead of the lockout extending itself.
   let rateLimit;
   try {
-    rateLimit = await checkSaveRateLimit(supabase);
+    rateLimit = await checkSaveRateLimit(scope);
   } catch (error) {
     Sentry.captureException(error, { tags: { route: "api/save" } });
-    return NextResponse.json(
+    return respond(
       { error: "Could not save that just now. Try again." },
       { status: 500 },
     );
@@ -86,7 +145,7 @@ export async function POST(request: NextRequest) {
     // 429 with the reason spelled out, not a generic 500. Someone who has just
     // pasted a reading list needs to know the link is fine and the wait is
     // short; a 500 tells them to try the same thing again immediately.
-    return NextResponse.json(
+    return respond(
       {
         error:
           `That is ${rateLimit.limit} saves in an hour, which is the limit. ` +
@@ -103,18 +162,25 @@ export async function POST(request: NextRequest) {
   // not error, must not duplicate, and must leave read position, favourites,
   // tags and highlights alone — and doing that as select-then-insert races
   // against a second tap. public.save_item does it in one statement.
-  const { data, error } = await supabase.rpc("save_item", {
+  const args = {
     p_url: raw.trim(),
     p_canonical_url: canonical.canonicalUrl,
     p_url_hash: canonical.urlHash,
-  });
+  };
+  const { data, error } =
+    scope.kind === "session"
+      ? await supabase.rpc("save_item", args)
+      : await supabase.rpc("save_item_impl", {
+          p_user_id: scope.userId,
+          ...args,
+        });
 
   if (error) {
     Sentry.captureException(error, {
       tags: { route: "api/save" },
       extra: { canonicalUrl: canonical.canonicalUrl },
     });
-    return NextResponse.json(
+    return respond(
       { error: "Could not save that just now. Try again." },
       { status: 500 },
     );
@@ -137,5 +203,18 @@ export async function POST(request: NextRequest) {
     alreadySaved,
   };
 
-  return NextResponse.json(body, { status: alreadySaved ? 200 : 201 });
+  return respond(body, { status: alreadySaved ? 200 : 201 });
+}
+
+export function OPTIONS(request: NextRequest) {
+  const headers = saveCorsHeaders(
+    request.headers.get("origin"),
+    request.nextUrl.origin,
+  );
+  if (!isSavePreflightAllowed(request.headers, request.nextUrl.origin)) {
+    return new NextResponse(null, { status: 403, headers });
+  }
+  headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  headers.set("Access-Control-Allow-Headers", "Authorization, Content-Type");
+  return new NextResponse(null, { status: 204, headers });
 }

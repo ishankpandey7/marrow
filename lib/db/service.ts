@@ -13,10 +13,10 @@ import { publicEnv, serverEnv } from "@/lib/env";
  * Supabase client using the service-role key. **This bypasses Row Level
  * Security entirely** and can read and write every user's data.
  *
- * Legitimate uses are exactly two: applying migrations, and cron jobs that act
- * across users. If you are reaching for it inside a request handler to make a
- * query work, the real problem is a missing or wrong RLS policy — fix that
- * instead.
+ * Used for migrations, cross-user cron jobs, and the save-only extension
+ * entry point. That entry point verifies a stored token hash and uses its
+ * owner for both the required rate-limit scope and restricted save RPC.
+ * Ordinary session requests must keep using their own RLS-scoped client.
  *
  * Session persistence is off: there is no user here, and a refresh loop on a
  * service key is a way to leak it into logs.

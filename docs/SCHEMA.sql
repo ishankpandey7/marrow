@@ -489,12 +489,15 @@ create policy save_events_select_own on public.save_events
 -- select-then-insert-or-update in the app is a race: two taps of the extension
 -- and you get a unique-violation 500.
 --
--- security definer so it can write fetch_jobs, which end users cannot. It never
--- takes a user id as a parameter — it reads auth.uid() itself. A definer
--- function that accepts the caller's identity as an argument is a hole.
+-- security definer so it can write fetch_jobs, which end users cannot.
+-- save_item keeps deriving identity from auth.uid(). Its shared implementation
+-- accepts a user id only behind a service-role-only EXECUTE grant: exposing
+-- that argument to authenticated or anonymous callers would be a hole.
+-- The save API derives the service-role argument from a verified token's owner.
 -- ============================================================================
 
-create or replace function public.save_item(
+create or replace function public.save_item_impl(
+  p_user_id       uuid,
   p_url           text,
   p_canonical_url text,
   p_url_hash      text
@@ -505,7 +508,7 @@ security definer
 set search_path = public, pg_temp
 as $$
 declare
-  v_user uuid := (select auth.uid());
+  v_user uuid := p_user_id;
   v_item public.items;
 begin
   if v_user is null then
@@ -553,6 +556,30 @@ begin
   insert into public.save_events (user_id) values (v_user);
 
   return v_item;
+end;
+$$;
+
+revoke all on function public.save_item_impl(uuid, text, text, text)
+  from public, anon, authenticated;
+grant execute on function public.save_item_impl(uuid, text, text, text)
+  to service_role;
+
+-- An identity argument is safe only behind the service-role-only grant above.
+-- Authenticated callers still enter here and cannot choose another user id.
+create or replace function public.save_item(
+  p_url           text,
+  p_canonical_url text,
+  p_url_hash      text
+)
+returns public.items
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  return public.save_item_impl(
+    (select auth.uid()), p_url, p_canonical_url, p_url_hash
+  );
 end;
 $$;
 
@@ -988,3 +1015,44 @@ revoke all on function public.search_items(
 grant execute on function public.search_items(
   text, text, uuid[], uuid[], text, text, integer, integer
 ) to authenticated;
+
+
+-- Extension tokens (0005). Revocable save-only credentials.
+-- Bearer plaintext is shown once and stays in the extension's local storage.
+-- The server stores only HMAC-SHA256(token), keyed by EXTENSION_TOKEN_SECRET.
+create table public.extension_tokens (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references public.profiles (id) on delete cascade,
+  name        text not null check (char_length(btrim(name)) between 1 and 80),
+  token_hash  text not null unique check (token_hash ~ '^[0-9a-f]{64}$'),
+  created_at  timestamptz not null default now(),
+  revoked_at  timestamptz
+);
+
+create index extension_tokens_user_idx
+  on public.extension_tokens (user_id, created_at desc);
+
+alter table public.extension_tokens enable row level security;
+
+create policy extension_tokens_select_own on public.extension_tokens
+  for select to authenticated
+  using ((select auth.uid()) = user_id);
+
+create policy extension_tokens_insert_own on public.extension_tokens
+  for insert to authenticated
+  with check ((select auth.uid()) = user_id and revoked_at is null);
+
+create policy extension_tokens_revoke_own on public.extension_tokens
+  for update to authenticated
+  using ((select auth.uid()) = user_id and revoked_at is null)
+  with check ((select auth.uid()) = user_id and revoked_at is not null);
+
+-- Override Supabase's default table grants: sessions can issue and revoke,
+-- but cannot read hashes, alter ownership, or reactivate revoked credentials.
+revoke all on table public.extension_tokens from public, anon, authenticated;
+grant select (id, user_id, name, created_at, revoked_at)
+  on public.extension_tokens to authenticated;
+grant insert (user_id, name, token_hash)
+  on public.extension_tokens to authenticated;
+grant update (revoked_at) on public.extension_tokens to authenticated;
+grant all on table public.extension_tokens to service_role;

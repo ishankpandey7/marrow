@@ -218,7 +218,10 @@ describe("checkSaveRateLimit", () => {
   it("asks for exactly the window, and one row more than the limit", async () => {
     const { client, recorded } = fakeClient({ rows: [] });
 
-    await checkSaveRateLimit(client, { now: () => T0, limit: 10 });
+    await checkSaveRateLimit(
+      { kind: "session", client },
+      { now: () => T0, limit: 10 },
+    );
 
     expect(recorded.table).toBe("save_events");
     expect(recorded.gteColumn).toBe("created_at");
@@ -233,10 +236,13 @@ describe("checkSaveRateLimit", () => {
       rows: saves(10, MINUTE).map((at) => new Date(at).toISOString()),
     });
 
-    const decision = await checkSaveRateLimit(client, {
-      now: () => T0,
-      limit: 10,
-    });
+    const decision = await checkSaveRateLimit(
+      { kind: "session", client },
+      {
+        now: () => T0,
+        limit: 10,
+      },
+    );
 
     expect(decision.allowed).toBe(false);
     expect(decision.retryAfterSeconds).toBeGreaterThan(0);
@@ -248,8 +254,8 @@ describe("checkSaveRateLimit", () => {
     // decision this function is entitled to make.
     const { client } = fakeClient({ error: { message: "connection reset" } });
 
-    await expect(checkSaveRateLimit(client, { now: () => T0 })).rejects.toThrow(
-      /connection reset/,
-    );
+    await expect(
+      checkSaveRateLimit({ kind: "session", client }, { now: () => T0 }),
+    ).rejects.toThrow(/connection reset/);
   });
 });
