@@ -1,0 +1,20 @@
+:root { font: 17px/1.6 system-ui, sans-serif; color: #23362b; background: #f5f3ec; color-scheme: light; }
+body { margin: 0; padding: 40px 20px; }
+main { max-width: 620px; margin: auto; }
+.eyebrow { font-size: .76rem; text-transform: uppercase; letter-spacing: .15em; color: #65694f; }
+h1 { margin: 12px 0; font: 2.4rem/1.12 Georgia, serif; letter-spacing: -.025em; }
+h2 { font-size: 1.15rem; }
+a { color: #245d43; text-underline-offset: 3px; }
+form { margin: 28px 0 18px; }
+label { display: block; font-weight: 650; margin-bottom: 8px; }
+input { box-sizing: border-box; width: 100%; border: 1px solid #a7ad9c; border-radius: 6px; padding: 12px; font: inherit; background: #fffefa; }
+button { border: 1px solid #31483b; border-radius: 6px; background: #31483b; color: white; padding: 10px 16px; font: 600 .88rem/1.4 system-ui, sans-serif; cursor: pointer; }
+button:disabled { opacity: .6; cursor: wait; }
+.secondary { background: transparent; color: #31483b; }
+.hint { color: #5e6659; font-size: .82rem; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+#status { background: #e8eadf; border-left: 3px solid #657853; padding: 12px 16px; min-height: 1.6em; }
+section { border-top: 1px solid #d3d5c7; margin-top: 32px; padding-top: 15px; font-size: .88rem; }
+kbd { background: #e7e5dc; border-radius: 3px; padding: 2px 5px; font: inherit; }
+:focus-visible { outline: 3px solid #997125; outline-offset: 3px; }
+@media (max-width: 420px) { body { padding: 24px 16px; } h1 { font-size: 2rem; } }

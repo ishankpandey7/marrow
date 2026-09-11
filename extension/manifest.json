@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "version": "0.1.0",
+  "description": "Save the current page or a link to your reading list.",
+  "permissions": ["activeTab", "storage", "contextMenus", "alarms"],
+  "host_permissions": ["https://marrow-bice.vercel.app/*"],
+  "action": {},
+  "options_ui": { "page": "popup/index.html", "open_in_tab": true },
+  "commands": {
+    "save-current-tab": {
+      "suggested_key": { "default": "Alt+Shift+S" },
+      "description": "Save the current tab"
+    }
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'"
+  }
+}

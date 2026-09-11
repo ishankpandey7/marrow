@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Extension options</title>
+    <link rel="stylesheet" href="options.css" />
+    <script type="module" src="options.js"></script>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">Save now. Read later.</p>
+      <h1 id="heading">Connect your reading list</h1>
+      <p>Generate a save-only token in <a id="settings" target="_blank" rel="noopener noreferrer">web app settings</a>, then paste it here once.</p>
+      <form id="token-form">
+        <label for="token">Extension token</label>
+        <input id="token" type="password" autocomplete="off" spellcheck="false" required maxlength="8192" />
+        <p class="hint">The token stays in this browser’s extension storage. Replacing or removing it discards pending saves. A request already in flight may finish first.</p>
+        <button type="submit">Store token</button>
+      </form>
+      <p id="connection"></p>
+      <p id="status" role="status" aria-live="polite"></p>
+      <div class="actions">
+        <button type="button" id="retry">Check queued saves</button>
+        <button type="button" id="disconnect" class="secondary">Remove token and pending saves</button>
+      </div>
+      <section>
+        <h2>One click to save</h2>
+        <p>Pin the extension and click its toolbar icon on a page, right-click a link, or press <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd>. Change the shortcut in your browser’s extension settings.</p>
+        <p><strong>OK</strong> = saved · <strong>HAVE</strong> = already saved · <strong>Q</strong> = queued · <strong>!</strong> = failed · <strong>AUTH</strong> = reconnect. Hover over the icon for the full message.</p>
+        <p>Queued saves retry automatically while the browser is open, including after its background worker restarts. The last result remains visible on the toolbar.</p>
+        <p>Removing a token here disconnects this browser. Revoke it in <a id="revoke" target="_blank" rel="noopener noreferrer">web app settings</a> to invalidate every copy.</p>
+      </section>
+    </main>
+  </body>
+</html>
