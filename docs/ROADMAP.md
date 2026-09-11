@@ -20,96 +20,94 @@ not check is worse than an unticked one, because next session it gets skipped.
 
 Kept current at the end of every session. Read this first; it is the handoff.
 
-**Last updated: 2026-09-11, Slice 5 closed.**
+**Last updated: 2026-09-11, Slice 6 code pushed; deployed token auth and browser hand checks remain open.**
 
-- **Implemented:** Slices 0–5 and 7, with the outstanding verification below.
-  Slice 5 touched nothing in an earlier slice except two one-line additions it
-  owed: `/search` in `PROTECTED_PREFIXES` in `proxy.ts`, and a Search link in
-  `app/(app)/layout.tsx`. Both are called out in the commits.
-- **Slice 5 shipped in `f24eb5d`, `9018ec9`, `5e099c7` and `0240db9`:**
-  `lib/search.ts` is the pure query parser, `supabase/migrations/0004_search.sql`
-  adds `public.search_items` and the `search_hit` row type it returns,
-  `app/(app)/search/page.tsx` is the route and `components/search-input.tsx` is
-  the box and the filters beside it. 484 tests, typecheck, lint and build all
-  pass. 0004 adds no columns and no indexes — both `search_tsv` columns and
-  both GIN indexes were already in 0001, and nothing was missing but the query.
-- **The design decision worth knowing before touching this.** Title and body
-  are indexed in two different tables, and an `OR` across a join uses neither
-  index. So each table is asked separately, one lookup per GIN index, and the
-  answers are folded by item id. Exclusions are a second tsquery applied to
-  both tables, because a `!term` inside the positive query would only ever have
-  meant "the title does not say it". Ranking constants were measured against
-  the nine real articles; the losing options and what they got wrong are in
-  Notes from the field, along with both `explain` plans.
-- **What is verified, and how.** Ranking, exclusion, phrases, `or`, the
-  `state`/`read`/`page` filters, pagination and the snippets were all exercised
-  against the real database through the function itself. Ownership was checked
-  as the `authenticated` role carrying each of the two profiles' JWT claims:
-  three hits for `quantum` on the account owning the articles, none on the
-  empty profile. `anon` and `service_role` are refused the function over HTTP.
-- **It is deployed and the route is live.** The push built on Vercel in 26s
-  and is Ready in Production. `GET https://marrow-bice.vercel.app/search`
-  returns `307 → /auth/sign-in?next=%2Fsearch` while an unknown path returns
-  404, which proves two things at once: the route exists in production, and
-  the `proxy.ts` change is live, because the `next` parameter is being carried.
-- **The page has been hand-verified on the live site, by Ishank, 2026-09-11.**
-  `quantum` returned three results with highlighted body snippets,
-  `quantum -storage` returned one, an absurd query showed the empty state,
-  and `tag:` narrowed to a tagged item. The agent could not do this itself —
-  sign-in is a magic link and the session had no mailbox — so the walkthrough
-  it wrote is preserved below, because it is also the regression check for the
-  next person who changes ranking or the query parser:
-  1. Click **Search everything** in the header.
-  2. `quantum` → three results, the two quantum-titled articles first, each
-     with a highlighted snippet from the article body.
-  3. `quantum -storage` → one result. The other two are dropped on words in
-     their bodies, not their titles.
-  4. `?` and then `"unclosed` → neither may error; the first should say
-     nothing was typed.
-  5. With a query in the box, change State to Archive. The query must survive,
-     and **Back to library** must land on the archive.
-  6. Tag an item, then search `tag:<that tag>`.
-     _Read status cannot be checked at all: nothing writes `read_at`. See the
-     second box under Slice 8._
-- **`items.read_at` is never written by anything, so the read filter is
-  dead.** Found while hand-verifying this slice. It is a Slice 3/4 gap, not a
-  Slice 5 one, and it is written up as the second box under Slice 8 rather
-  than fixed here. Search inherits it: `read=read` can never return a row.
-- **Search only reads what has been fetched.** Titles, excerpts, authors and
-  site names are searchable for every item; the article body only once
-  extraction has run. With extraction on a daily cron a link saved an hour ago
-  is not findable by its text yet, and the empty state says so. Force a run
-  with `npx vercel crons run /api/cron/extract` from PowerShell.
-- **`gpu` does not match the title "AMD GPUs are climbing…".** The English
-  stemmer treats `GPUs` and `GPU` as different lexemes. It is the first thing
-  that will look like a bug and it is not one; the fix is a schema change and
-  belongs to a later slice. See Notes from the field.
-- **Slice 7 is unchanged and still done.** Its two unticked boxes are the
-  Sentry ones, and they belong to Slice 8, not here.
-- **Server-side Sentry is still dead on the deployed app, and still a Slice 0
-  fault.** `GET /api/debug-sentry` returns a 500 in production and produces no
-  event. First box under Slice 8. Deliberately not touched by this slice.
-- **The cron schedule is still daily, and that is still a Hobby plan limit.**
-  Vercel refuses anything more frequent. `vercel.json` says `9 2 * * *` for
-  extract and `17 4 * * *` for purge. Slice 8 must decide: Pro, an external
-  scheduler, or accept daily.
-- **Still carried forward from before:** `lib/types.ts` is hand-written and
-  should be replaced with `supabase gen types` output now that
-  `SUPABASE_DB_URL` works — `SearchHit` in `lib/search.ts` and `search_hit` in
-  the schema are now a second pair that must be kept in step by hand; the
-  Slice 4 index and pagination boxes; the Slice 1 session-refresh box; the
-  Slice 3 hand checks; and the `/reader-preview/[id]` keep-or-remove decision
-  for Slice 8.
-- **The Supabase database password has been rotated — this is closed.** It
-  had been printed into a session transcript by `npx`'s own echo of the
-  command line; Ishank reset it and updated `SUPABASE_DB_URL`. The value now
-  in `.env.local` is the working one — every query in Slice 5 went through it.
-  Call the Supabase CLI by its full path rather than through `npx` and the
-  echo does not happen.
-- **Next: Slice 6 (browser extension) or Slice 8.** Slice 8 already owns
-  splitting `components/filter-bar.tsx`; when that happens, give `filterUrl` a
-  path so the search page can use the real `FilterBar` instead of its own
-  copy of three dropdowns.
+- **Implemented:** Slices 0–7. Slice 6 has automated verification and its
+  database migration is applied; deployed token authentication returns 500,
+  and Chrome/Firefox and signed-in hand checks below are still open. Unrelated
+  earlier slices were not re-verified or fixed.
+- **Shipped code:** `fa6ff5b` (backend/shared save) and `03f2093` (extension)
+  are pushed to `origin/main`. Vercel reports deployment
+  `dpl_ERkWc5ewLa9i7gd1CvS3VBTBuTwR` Ready at commit `03f2093`.
+- **Open deployment issue:** OPTIONS returns 204 with the exact extension
+  origin and Retry-After exposed; malformed bearer returns 401; a foreign
+  website origin returns 403. A well-formed random unknown token returns 500
+  instead of the expected 401. Empty request bodies meant no items were saved.
+  Vercel's environment-name list contains `EXTENSION_TOKEN_SECRET` for
+  Production and Preview; its value was not revealed. The request log has no
+  exception detail, so the exact cause remains unknown. The same token-table
+  lookup succeeds with the local service client and a nonexistent hash.
+  The current `.env.local` entry is empty, contrary to the starting note;
+  no secret was changed. First inspect the production secret's presence and
+  32-character minimum, then the deployed service-client configuration if
+  needed. Do not change the known Slice 0 Sentry issue to diagnose this.
+- **Slice 6 browser package:** `extension/` builds the same source into
+  `dist/chrome` (MV3 module service worker) and `dist/firefox` (MV3 module event
+  page). Toolbar save, link context menu, rebindable shortcut, persistent badge
+  feedback, local token storage and durable offline retries are implemented.
+  The only permissions are activeTab, storage, contextMenus, alarms and the
+  single API host. No popup intercepts the toolbar click. Browser code and
+  tests stay out of the Next/browser bundle; server/web helpers under the
+  extension directory are explicitly separate from the extension build.
+- **Slice 6 backend:** `/settings/extension` generates and revokes long-lived
+  save-only tokens. Only HMAC-SHA256 hashes keyed with the existing
+  `EXTENSION_TOKEN_SECRET` are stored in Postgres; plaintext is returned once.
+  Only `/api/save` accepts these opaque tokens. Cookie authentication remains
+  the web path; an invalid bearer never falls back to cookies. CORS and an
+  explicit OPTIONS handler cover the extension path and its error responses.
+- **Both reviewed changes are approved and implemented.** There is one SQL
+  upsert body in service-role-only `save_item_impl(uuid,text,text,text)`;
+  SECURITY DEFINER `save_item(text,text,text)` supplies `auth.uid()`.
+  Re-saving through either door resurrects archive/delete state, preserves
+  reading state/favourites/tags/highlights, and only requeues non-ready items.
+  The extension reads the existing `alreadySaved` response field.
+- **The shared limiter requires an explicit scope.** Session scope adds no
+  user-id filter and preserves the existing RLS read. User scope requires
+  the verified token owner's user id and always filters by it. The API uses
+  that same scope for its implementation RPC. Both use unchanged
+  `decideRateLimit` arithmetic and the same save_events counter. Two-user and
+  mixed web/extension tests cover the isolation and shared allowance.
+- **Migration 0005 is applied to the real database.** Dry run named only 0005;
+  push applied only 0005 with vault/seed/role-file changes excluded. Read-only
+  checks confirm RLS on all nine tables and three token policies; anon and
+  authenticated cannot execute the implementation, service_role can, and the
+  authenticated wrapper remains SECURITY DEFINER. Sessions can revoke tokens
+  but cannot read hashes, change owners or delete tokens. The repeatable check
+  is `extension/server/verify-schema.sql`; its results are in Notes below.
+- **Verification:** root typecheck, lint (zero warnings), **620 tests**, and
+  Next production build pass. The four extension scripts also pass, including
+  **33 browser tests** and both output builds. Unit tests use injected fetch
+  and clock, never network. The new settings route appears in the Next build.
+  All review scratch is deleted; no new dependency was added.
+- **What you must verify by hand:** follow `extension/README.md` in Chrome and
+  Firefox: load the built package, generate/paste a token, save via toolbar,
+  link menu and rebound shortcut; inspect success/failure badges; re-save an
+  archived/deleted article with reading state; disconnect/reconnect network
+  and reload the worker; verify revocation and the shared web/extension limit.
+  These browser/signed-in checks are not claimed as performed.
+- **Tooling:** use the existing npm CLI directly if the PowerShell shim points
+  at inaccessible Roaming npm:
+  `node 'C:/Program Files/nodejs/node_modules/npm/bin/npm-cli.js' ...`.
+  The installed Supabase CLI lives at
+  `C:/Users/LOQ/AppData/Local/npm-cache/_npx/aa8e5c70f9d8d161/node_modules/.bin/supabase.cmd`.
+  It needed sandbox escalation to write local telemetry; its database commands
+  then worked with the configured URL. Use `db query --db-url ... --file ...`
+  instead of multiline positional SQL through the Windows command shim. Never
+  invoke npx with credentials; they are redacted from all command output.
+  Vercel CLI 59.15.1 is installed but its stored login was rejected as invalid;
+  production environment names could not be listed through that CLI. The
+  existing Vercel browser session did allow read-only deployment, environment
+  name and request-log inspection.
+- **Next:** resolve the deployed token-auth 500, then complete the hand checks
+  before Slice 8. Existing known issues stay
+  there: server-side Sentry is dead, crons are DAILY due to Vercel Hobby, the
+  list does not auto-refresh, and nothing writes read_at. Do not fix them in
+  Slice 6. Carry forward earlier session-refresh/reader/index/pagination hand
+  checks, generated DB types, custom domain and reader-preview decisions.
+  Slice 8 owns splitting filter-bar.tsx. Search was hand-verified by Ishank in
+  Slice 5; body matches await extraction and `gpu`/`GPUs` stemming still differs.
+  The prior database-password rotation remains closed; no credentials need
+  to be requested from the user.
 
 **Live:** <https://marrow-bice.vercel.app> · **Repo:** `ishankpandey7/marrow`
 
@@ -497,22 +495,26 @@ token), `app/(app)/settings/extension/page.tsx`
 
 ### Done when
 
-- [ ] Manifest V3. Works in Chrome and Firefox from the same source.
+Automated checks and migration verification are complete. The deployed token
+path returns 500 and remains open alongside browser and signed-in checks below;
+the exact walkthrough is in "extension/README.md".
+
+- [ ] Manifest V3. Works in Chrome and Firefox from the same source. Both builds pass; loading them in the actual browsers remains a hand check.
 - [ ] One click on the toolbar icon saves the current tab. Success and failure
-      are both visible without opening the popup — badge or icon state.
-- [ ] Context menu: "Save link to Marrow" on any link.
-- [ ] Keyboard shortcut, user-rebindable.
+      are both visible without opening the popup — badge or icon state. Offline event/feedback tests pass; actual toolbar display remains a hand check.
+- [ ] Context menu: "Save link to Marrow" on any link. Registration/destination tests pass; verify the real browser menu by hand.
+- [ ] Keyboard shortcut, user-rebindable. Command tests pass; verify OS/browser rebinding by hand.
 - [ ] Auth is a long-lived token generated in the web app settings page, pasted
-      once into the extension. No cookie sharing, no OAuth flow.
+      once into the extension. No cookie sharing, no OAuth flow. Hash issuance tests pass; signed-in generation/paste remains a hand check.
 - [ ] The token is stored in `chrome.storage.local`, never in `localStorage`,
-      and is revocable from the web app.
+      and is revocable from the web app. Local storage tests and live DB grants pass; web revocation remains a hand check.
 - [ ] `/api/save` accepts the token, sets a tight CORS policy, and rate-limits
-      per user exactly as the web path does.
-- [ ] Saving the same page twice is a no-op that reports "already saved",
-      exercising the Slice 1 gotcha through a second entry point.
-- [ ] Offline: the save is queued and retried when the network returns.
-- [ ] `extension/` builds with its own script and is not bundled into the
-      Next.js app.
+      per user exactly as the web path does. Offline route/two-user/mixed-entry tests and deployed CORS pass; live token verification returns 500 (see handoff), so acceptance is not verified.
+- [x] Saving the same page twice reports "already saved" with Slice 1 resurrection and reading-state preservation,
+      exercising the Slice 1 gotcha through a second entry point. SQL body equality and response/argument tests pass; the real archive/delete walkthrough remains manual.
+- [x] Offline: the save is queued and retried when the network returns. Injected fetch/clock tests cover durable replay, retries, rate-limit delay and token replacement; physical network/worker reload remains manual.
+- [x] `extension/` builds with its own script and is not bundled into the
+      Next.js app. Both builds and their standalone scripts pass; only explicitly separate server/web helpers are imported by the app.
 
 ### Gotcha
 
@@ -553,7 +555,7 @@ anything, or change settings.
       only way to produce a crashed worker on demand. Both branches: a job with
       attempts left went back to `queued` and was picked up in the same run; a
       job whose attempts were spent closed as `failed` with `last_error =
-      stalled` **and its item was resolved to `failed` / `server_error`**,
+    stalled` **and its item was resolved to `failed` / `server_error`**,
       which is the half that stops a permanent spinner.
 - [x] `/api/cron/purge` hard-deletes items soft-deleted more than 30 days ago.
       Verified on the deployment in both directions, with `deleted_at`
@@ -580,7 +582,7 @@ ${CRON_SECRET}` — verified by calling it from outside with curl and
       minutes." — shown in the save form, which already renders the error body.
 - [ ] Extraction failures reach Sentry with the URL and the failure code.
       _Correct from a local run against the real database — `cron/extract:
-      forbidden` is in Sentry with its URL. **Blocked on a Slice 0 fault, not a
+    forbidden` is in Sentry with its URL. **Blocked on a Slice 0 fault, not a
       Slice 7 one: server-side Sentry is dead on the deployed app entirely.**
       `GET /api/debug-sentry` returns a 500 in production and produces no event
       either, and that route exists in order to answer exactly this question.
@@ -644,7 +646,7 @@ fast as they like. Test the 401 by actually calling it from outside.
       arrives, while the identical code reports fine from `next dev`. The
       Sentry project holds only localhost events. Everything downstream of this
       is affected — extraction failures, `blocked_url` counting, and the two
-      Slice 7 boxes that stay unticked because of it. `SENTRY_DSN` *is* set on
+      Slice 7 boxes that stay unticked because of it. `SENTRY_DSN` _is_ set on
       Production, so start elsewhere: whether `instrumentation.ts` `register()`
       actually runs on Vercel under Next 16's Turbopack build, and whether
       `withSentryConfig` instruments the server bundle there at all. Prove the
@@ -706,7 +708,7 @@ are true but not written down anywhere else.
 ### 2026-09-10 — Slice 5
 
 - **The two `search_tsv` columns cannot be ORed together.** `where
-  i.search_tsv @@ q or c.search_tsv @@ q` across a join to `item_content`
+i.search_tsv @@ q or c.search_tsv @@ q` across a join to `item_content`
   reads best and uses neither GIN index — an OR spanning two relations is not
   answerable from either table's index. Each table is asked separately instead
   and the two answers folded by item id, which keeps one ordinary index lookup
@@ -714,7 +716,7 @@ are true but not written down anywhere else.
   out and undoes the reason `item_content` exists.
 - **An exclusion folded into the positive query means the wrong thing.**
   `websearch_to_tsquery('radeon -nvidia')` against `items.search_tsv` asks that
-  the *metadata* not say nvidia; the body stays free to. Exclusions are parsed
+  the _metadata_ not say nvidia; the body stays free to. Exclusions are parsed
   out in `lib/search.ts` and applied to both tables. Proof against the real
   articles: `quantum` returns three, and `quantum -storage` returns one — the
   other two are dropped on the strength of their bodies alone.
@@ -728,15 +730,15 @@ are true but not written down anywhere else.
   scored every article in the corpus between 0.005 and 0.010 for every term
   tried, which is no ordering at all. The chosen pair puts PostgreSQL top for
   "version" and "support", the storage comparison top for "storage" and
-  "price", and PostgreSQL *last* for "price" — which it mentions in passing —
+  "price", and PostgreSQL _last_ for "price" — which it mentions in passing —
   despite being twenty-two times longer than the article above it.
 - **The 0.4 body weight is load-bearing.** A title-only match scores 1.0 before
   normalisation and 0.5 after, and a body rank cannot reach 1.0, so at 0.4 the
   best possible body match still loses to any title match. It still beats a
   match found only in an author (0.17) or a site name (0.09).
 - **The English stemmer does not depluralise an acronym.** `to_tsvector
-  ('english','GPUs')` is `'gpus'` and `'GPU'` is `'gpu'` — different lexemes.
-  So searching `gpu` does *not* match the title "AMD GPUs are climbing the
+('english','GPUs')` is `'gpus'` and `'GPU'` is `'gpu'` — different lexemes.
+  So searching `gpu` does _not_ match the title "AMD GPUs are climbing the
   sales charts"; it matches that article on its body, where the singular
   appears. Nothing here is broken, but it is the first thing that will look
   broken to someone testing search, and no configuration in this slice fixes
@@ -798,7 +800,7 @@ Default planner — sequential scans, which is correct for a 12-row table:
     Execution Time: 10.172 ms
 
 `enable_seqscan = off` — the question the Gotcha actually asks, which is
-whether the *shape* lets the GIN indexes be used. It does, both of them:
+whether the _shape_ lets the GIN indexes be used. It does, both of them:
 
     ->  Append  (actual time=... rows=5 loops=1)
           ->  Bitmap Heap Scan on items i_1  Recheck Cond: (search_tsv @@ 'quantum'::tsquery)
@@ -1127,10 +1129,10 @@ authenticated`, so an anonymous reader sees nothing); and `save_item()` called
 ### 2026-09-10 — Slice 7
 
 - **`npx` echoes the command line, secrets and all.** `npx supabase migration
-  list --db-url "$DBURL"` printed the full connection string, password
+list --db-url "$DBURL"` printed the full connection string, password
   included, through npm's own `npm notice run …` line. Calling the cached
   binary directly avoids it. Anything secret goes in over stdin — `printf '%s'
-  "$SECRET" | vercel env add …` — never as an argument.
+"$SECRET" | vercel env add …` — never as an argument.
 - **Vercel Hobby refuses a cron more frequent than daily**, and it refuses it
   at deploy time, not at schedule time: the whole deployment fails with
   "Hobby accounts are limited to daily cron jobs". Worth knowing before writing
@@ -1179,3 +1181,69 @@ authenticated`, so an anonymous reader sees nothing); and `save_item()` called
   failure on the deployment without saving new URLs or spending anyone else's
   bandwidth. `fetch_jobs_one_open_per_item` keeps it safe: the insert only
   succeeds when nothing is already open for that item.
+
+### 2026-09-11 — Slice 6 pause and reviewed boundaries
+
+The initial interpretation of "no-op" was corrected by the user: it means
+Slice 1's existing re-save behavior, not literal absence of writes. The shared
+SQL body was compared against the real schema before approval and was identical
+except its identity initializer. Tests now compare the implementation against
+0002's statements and assert the wrapper/grants, avoiding a second save algorithm.
+
+The user rejected an optional service-role user-id filter. The approved limiter
+requires a discriminated session/user scope with no default, with two users'
+events in the offline test. The route takes identity only from an active token
+hash lookup and uses that same scope for rate counting and saving.
+
+At the user-requested pause: 620 tests and typecheck pass; lint has one new
+anonymous-default-export warning to fix. No remote migration, deployment,
+commit or push has occurred. The working tree is the continuation point;
+review scratch has been deleted. Finish the remaining verification and the
+Part 4 handoff/commit/push before claiming Slice 6 complete.
+
+### 2026-09-11 — Slice 6 implementation and database verification
+
+Resumed after the requested pause. The anonymous-default-export warning was
+fixed; root typecheck, lint, 620 tests and Next build pass. The extension's own
+typecheck/lint, 33 tests and Chrome/Firefox builds pass. No dependency was added.
+Browser/signed-in manual verification remains, and the post-deployment token
+probe below found an open production failure. `extension/README.md` gives each
+click and expected result.
+
+Only 0005 was pending in the remote dry run, and only 0005 was applied. Live
+read-only metadata verification returned:
+
+- RLS true on extension_tokens, fetch_jobs, highlights, item_content, item_tags,
+  items, profiles, save_events and tags; extension_tokens has three policies.
+- save_item_impl EXECUTE: anon=false, authenticated=false, service_role=true.
+- save_item wrapper: authenticated EXECUTE=true, SECURITY DEFINER=true.
+- authenticated token privileges: read_hash=false, revoke=true,
+  change_owner=false, delete_token=false.
+
+Operational surprises: the Supabase CLI requires a local telemetry write even
+for --help; sandbox escalation resolved it. A multiline positional SQL argument
+through its Windows .cmd shim lost the remote flag and attempted localhost;
+`db query --db-url ... --file extension/server/verify-schema.sql` worked. No
+user data was read or written by the verification. The old npm shim can select
+an inaccessible Roaming install, so scripts ran through the installed npm CLI
+by absolute path. Vercel's cached CLI is 59.15.1 but its stored login is invalid;
+no secret values were printed and no credentials were requested.
+
+### 2026-09-11 — Slice 6 deployment probe and final handoff
+
+Code commits `fa6ff5b` and `03f2093` were pushed to main. The Vercel browser
+dashboard confirms the latter deployment is Ready. The first public probe
+crossed a deployment transition; a second probe against the new code returned
+204 for extension preflight, 401 for malformed bearer, 403 for foreign origin,
+and **500 for a well-formed unknown token**, which should have returned 401.
+No probe supplied a URL or an actual token, so no save was possible.
+
+The new table is accessible through the existing local service client: a
+nonexistent hash returns no row without error. Vercel lists the token secret
+for Production and Preview, but the request log contains no exception detail.
+Only presence/minimum-length checks were performed locally: the current
+`.env.local` token-secret entry is empty. This contradicts the opening prompt;
+no value was substituted, changed or printed. Check the deployed secret's
+presence/length and service-client configuration before browser acceptance.
+Do not assume the 500 proves which setting failed, and do not repair Sentry
+inside this slice. The API acceptance box stays unticked.

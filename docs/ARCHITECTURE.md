@@ -171,6 +171,23 @@ ROADMAP.md, which is the specific case people get wrong.
 triage quickly, and losing an article to a mis-tap is the kind of thing that
 makes someone stop trusting the app. A cron job hard-deletes after 30 days.
 
+### Extension tokens and the shared save implementation
+
+`extension_tokens` (0005) stores an owner, browser name, creation/revocation
+times and an HMAC-SHA256 hash of a random 32-byte bearer credential. Only the
+one-time generation response contains the raw token. Owner RLS policies and
+column grants allow issuing tokens, reading metadata and revoking active
+tokens; sessions cannot read hashes, change ownership or reactivate a token.
+Deleting a profile cascades to its tokens.
+
+`save_item_impl(uuid,text,text,text)` contains the existing save body unchanged
+apart from taking its user id as an argument. EXECUTE is revoked from PUBLIC,
+anon and authenticated, and granted only to service_role. The existing
+SECURITY DEFINER `save_item(text,text,text)` wrapper supplies `auth.uid()`.
+The extension API supplies the owner resolved from an active token hash.
+There is one upsert implementation: both doors resurrect archived/deleted
+items, preserve reading state and requeue extraction only for non-ready items.
+
 ---
 
 ## 5. The fetcher — SSRF and the untrusted-URL boundary
@@ -468,7 +485,7 @@ a convention. Putting a secret behind it publishes the secret.
 | `SENTRY_ORG` / `SENTRY_PROJECT` | no     | Slice 0     | Sentry URL slugs. Source-map upload only.                                                                                                     |
 | `SENTRY_AUTH_TOKEN`             | **NO** | Slice 0     | Sentry, Settings, Auth Tokens. Build-time only; set it in Vercel, not in the repo.                                                            |
 | `CRON_SECRET`                   | **NO** | Slice 7     | Generate: `openssl rand -hex 32`. Every `/api/cron/*` route rejects a request whose bearer token does not match.                              |
-| `EXTENSION_TOKEN_SECRET`        | **NO** | Slice 6     | `openssl rand -hex 32`. Signs the extension's save token.                                                                                     |
+| `EXTENSION_TOKEN_SECRET`        | **NO** | Slice 6     | `openssl rand -hex 32`. Keys HMAC-SHA256 of extension save tokens; rotating it invalidates all existing tokens.                               |
 | `RESEND_API_KEY`                | **NO** | Slice 7     | resend.com. Only needed if the digest email ships; the slice degrades gracefully without it.                                                  |
 
 **Absent-key behaviour.** A missing required variable throws, with the
@@ -499,8 +516,19 @@ optional. There is **no** fallback to a placeholder value anywhere.
 - **The service-role client bypasses RLS.** It is the one key that can read
   every user's data. `lib/db/service.ts` imports `server-only` so that a client
   component importing it fails the build rather than shipping it to a browser.
-  It is used for exactly two things: applying migrations, and cron jobs that
-  legitimately act across users.
+  It is used for migrations, cross-user cron jobs, and the narrowly scoped
+  extension save entry point. The latter verifies the stored token hash before
+  deriving identity; it never accepts a caller-supplied user id.
+- **Extension credentials only authorize saving.** They are opaque tokens,
+  not Supabase session JWTs, and only `POST /api/save` accepts them. Generating
+  and revoking tokens requires a verified web session. Revocation is checked
+  on each save; an already authenticated in-flight request may finish.
+  Extension requests omit cookies; an invalid bearer never falls back to a
+  cookie session. CORS permits the own-site origin and syntactically valid
+  Chrome/Firefox extension origins, with POST/OPTIONS and only Authorization
+  and Content-Type request headers. It never enables credentialed CORS and
+  exposes Retry-After. A token is still required even for an allowed extension
+  origin; host permissions can also allow requests without an Origin header.
 - **Stored XSS is the realistic threat.** We render attacker-controlled HTML
   into our own origin. §6 step 5 is the defence. A CSP without `unsafe-inline`
   for scripts is the second layer; sanitisation is not allowed to be the only
@@ -513,6 +541,12 @@ optional. There is **no** fallback to a placeholder value anywhere.
   nothing, so the window drains instead of the lockout extending itself.
   Rejection is a 429 with `Retry-After` and copy that says what happened —
   never a 500, which tells someone to retry the thing that just failed.
+  `checkSaveRateLimit` requires an explicit session or user scope. The session
+  form relies on RLS and has no user-id filter; the service-role form requires
+  the verified token owner's user id and always filters by it. The same scope
+  supplies identity to the save implementation. Both forms use the same
+  `decideRateLimit` arithmetic and accepted-save events; neither has a separate
+  allowance. The existing count-then-save concurrency behavior is unchanged.
 - **Zero secrets in committed files.** Not in tests, not in fixtures, not in
   comments, not in a `.env.example` that "just has the dev one".
 
@@ -590,6 +624,30 @@ capture works during Slice 0 and is **deleted in Slice 8**.
 
 Append here when a decision is made that a future reader would otherwise
 re-litigate. Date, decision, reason.
+
+- **2026-09-11 — One save implementation, two authenticated doors.** The user
+  reviewed and approved the SQL split before it was added to 0005. Extension
+  re-save means the Slice 1 resurrection/preservation behavior, not a literal
+  absence of writes. The privileged identity parameter is safe only behind
+  the service-role-only grant; the web wrapper remains SECURITY DEFINER.
+- **2026-09-11 — Required rate-limit scope.** The user rejected an optional
+  user-id filter because omission or a wrong filter could miscount another
+  account. The approved discriminated scope makes the session/user choice
+  explicit and userId required for the service-role form. Offline tests put
+  two accounts' events in one backing collection and exercise both scopes.
+- **2026-09-11 — Separate browser build, no additional dependencies.** Chrome
+  uses an MV3 module service worker and Firefox an MV3 module event page from
+  the same sources. The extension package uses the root's existing compiler
+  and test tools. Its build ships only browser modules and options assets;
+  `extension/server` and `extension/web` belong to the Next app. activeTab and
+  the single API host are supplemented only by storage, contextMenus and
+  alarms for the checklist's durable storage, link menu and suspended-worker
+  retry requirements. No content scripts or page-wide host permission exist.
+- **2026-09-11 — Durable saves belong to their configured token.** Local
+  writes are serialized, saves persist before requests, and alarms retry after
+  worker restarts. Replacing/removing a token or receiving 401/403 discards
+  pending saves, so one account's browsing activity cannot be replayed into
+  another. The options UI states this behavior before the user changes tokens.
 
 - **2026-09-09 — Credential-free reader catalogue, separate from auth.** A
   dedicated `/reader-preview/[id]` route makes Slice 3 reviewable without
@@ -673,6 +731,6 @@ re-litigate. Date, decision, reason.
   fixed batch is fine. Vercel's Hobby plan allows only a daily cron, and five
   items a day is not a queue. A run now keeps claiming until the queue is empty
   or a 40-second budget is spent, which is correct under both schedules — the
-  budget stops it *starting* another round, well short of `maxDuration`,
+  budget stops it _starting_ another round, well short of `maxDuration`,
   because a run the platform kills leaves its rows locked for the stale-lock
   window.
