@@ -20,7 +20,7 @@ not check is worse than an unticked one, because next session it gets skipped.
 
 Kept current at the end of every session. Read this first; it is the handoff.
 
-**Last updated: 2026-09-11, Slice 6 code pushed; deployed token auth and browser hand checks remain open.**
+**Last updated: 2026-09-11, Slice 6 deployed and server-side verified; browser hand checks remain open.**
 
 - **Implemented:** Slices 0–7. Slice 6 has automated verification and its
   database migration is applied; deployed token authentication returns 500,
@@ -29,18 +29,22 @@ Kept current at the end of every session. Read this first; it is the handoff.
 - **Shipped code:** `fa6ff5b` (backend/shared save) and `03f2093` (extension)
   are pushed to `origin/main`. Vercel reports deployment
   `dpl_ERkWc5ewLa9i7gd1CvS3VBTBuTwR` Ready at commit `03f2093`.
-- **Open deployment issue:** OPTIONS returns 204 with the exact extension
-  origin and Retry-After exposed; malformed bearer returns 401; a foreign
-  website origin returns 403. A well-formed random unknown token returns 500
-  instead of the expected 401. Empty request bodies meant no items were saved.
-  Vercel's environment-name list contains `EXTENSION_TOKEN_SECRET` for
-  Production and Preview; its value was not revealed. The request log has no
-  exception detail, so the exact cause remains unknown. The same token-table
-  lookup succeeds with the local service client and a nonexistent hash.
-  The current `.env.local` entry is empty, contrary to the starting note;
-  no secret was changed. First inspect the production secret's presence and
-  32-character minimum, then the deployed service-client configuration if
-  needed. Do not change the known Slice 0 Sentry issue to diagnose this.
+- **That deployment issue is closed, 2026-09-11. It was an empty secret.**
+  `EXTENSION_TOKEN_SECRET` was named in `.env.local` and on Vercel but held no
+  value, so `extensionTokenSecret()` threw its 32-character check and the route
+  caught it as a 500. That is why a *malformed* token answered 401 correctly —
+  the format check rejects it before the secret is ever read — while a
+  well-formed unknown one reached the secret and blew up. Ishank generated a
+  64-hex value into `.env.local` and both Vercel environments and redeployed.
+  Re-probed against the deployment since: unknown well-formed token 401,
+  malformed token 401, no auth 401, foreign website origin 403, and OPTIONS
+  204 from both a `chrome-extension://` and a `moz-extension://` origin with
+  the exact origin echoed and `Retry-After` exposed.
+- **The CORS allowlist pins no extension ID**, it matches the shape — Chrome
+  IDs are 32 characters of a-p, Firefox a UUID. An unpacked extension's random
+  ID therefore works with nothing to configure. Worth knowing before anyone
+  tries to "fix" a 403: a test origin using letters past p is correctly
+  rejected, and that is the regex doing its job, not a bug.
 - **Slice 6 browser package:** `extension/` builds the same source into
   `dist/chrome` (MV3 module service worker) and `dist/firefox` (MV3 module event
   page). Toolbar save, link context menu, rebindable shortcut, persistent badge
