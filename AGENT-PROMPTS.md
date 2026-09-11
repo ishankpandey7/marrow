@@ -420,9 +420,11 @@ Build exactly the Slice 6 checklist. Notes:
 
 Things that already exist, so you do not rediscover or duplicate them:
 
-- `EXTENSION_TOKEN_SECRET` is already in `.env.example` and already has a value
-  in `.env.local`. Nothing reads it yet. Use that variable — do not invent a
-  second one, and do not print its value.
+- `EXTENSION_TOKEN_SECRET` is already named in `.env.example` and in
+  `.env.local`, but **the value is empty** — an earlier version of this prompt
+  claimed it was set, and that was wrong. Use that variable, do not invent a
+  second one, and do not print its value. Tell me to generate and set it
+  rather than working around it.
 - `/settings` is already in PROTECTED_PREFIXES in `proxy.ts`, so the new
   settings page needs no middleware change. `app/(app)/layout.tsx` already
   guards the route group as well.
