@@ -20,7 +20,28 @@ not check is worse than an unticked one, because next session it gets skipped.
 
 Kept current at the end of every session. Read this first; it is the handoff.
 
-**Last updated: 2026-09-11, Slice 6 deployed and server-side verified; browser hand checks remain open.**
+**Last updated: 2026-09-23 — infrastructure paused; Slice 6 browser checks partly done.**
+
+- **Supabase is PAUSED. Restore it before anything touches the database.**
+  Checked 2026-09-23: the project hostname (`kdhj….supabase.co`) returns
+  `ENOTFOUND` while `supabase.com` resolves, which is what a paused free-tier
+  project looks like. Restoring needs the dashboard (Project → Restore
+  project) — there is no Supabase access token in `.env.local`, so an agent
+  cannot do it. The Vercel site itself answered 200.
+- **Both CLIs have fallen out of the npx cache.** The Supabase binary path used
+  in earlier sessions (`npm-cache/_npx/aa8e5c70f9d8d161/...`) no longer
+  exists, and `npx vercel crons ls` failed with `npm error Invalid Version`.
+  Re-resolve them before relying on either. Still call the Supabase CLI by
+  full path, never through `npx`, so the DB password is not echoed.
+- **Slice 6 hand-check progress (2026-09-13).** Token generated at
+  `/settings/extension`, extension loaded unpacked in Chrome (ID
+  `khdhlckkonndfphkflckcpgahikicpjc`, which passes the CORS shape check —
+  preflight 204). `Alt+Shift+S` saved a page: the row appeared in `items`
+  within a minute. The badge was invisible only because the extension was
+  not pinned. **Not yet reported back:** HAVE on re-save, the context menu,
+  revocation, and Firefox. Boxes stay unticked until those are seen.
+
+_Previous handoff, still accurate below:_ **Last updated: 2026-09-11, Slice 6 deployed and server-side verified; browser hand checks remain open.**
 
 - **Implemented:** Slices 0–7. Slice 6 has automated verification and its
   database migration is applied; deployed token authentication returns 500,
