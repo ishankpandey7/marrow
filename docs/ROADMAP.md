@@ -20,7 +20,24 @@ not check is worse than an unticked one, because next session it gets skipped.
 
 Kept current at the end of every session. Read this first; it is the handoff.
 
-**Last updated: 2026-09-24 — Slice 9 (fetch on save) built and deployed; two hand checks open.**
+**Last updated: 2026-09-25 — Slice 10 (save the page you are reading) deployed; hand check open.**
+
+- **Slice 10 is implemented, 0009 is applied and verified, and the code is
+  pushed.** A toolbar or shortcut save sends the open tab's HTML; the server
+  extracts it instead of fetching, so sites that refuse our server still
+  save. A two-lens review found four low issues, all fixed before the push
+  (details in the Slice 10 boxes). Only the hand check is open.
+- **What Ishank must do by hand (about 5 minutes):**
+  1. `chrome://extensions`, press Reload on Marrow, and allow the new
+     permission if Chrome asks.
+  2. Open an NDTV or openai.com article and save it with the toolbar icon
+     or Alt+Shift+S.
+  3. About 15 s later, reload /inbox and open it. The article is there.
+  4. (Firefox, when convenient.) Load the rebuilt `dist/firefox` and repeat.
+- **Next:** Slice 11, highlights + notes. Write it into this file first.
+- Slice 9's last box, a save from the extension, is covered by step 2 above.
+
+_Earlier on 2026-09-24:_
 
 - **Slice 9 is implemented, migration 0008 is applied and verified, and the
   code is pushed.** Two boxes stay open: that an article is readable seconds
@@ -35,7 +52,7 @@ Kept current at the end of every session. Read this first; it is the handoff.
 - **The earlier-slice bug pass below was hand-checked by Ishank on
   2026-09-24:** save, tag/untag, and Try again on an archived failed item all
   behaved.
-- **Next:** Slice 10, highlights + notes. Write it into this file first.
+- **Next:** Slice 10, save the page you are reading (agreed 2026-09-25, ahead of the feature list). After it, highlights + notes become Slice 11 and the rest shift by one.
 
 _Earlier on 2026-09-24:_
 
@@ -747,6 +764,13 @@ fast as they like. Test the 401 by actually calling it from outside.
       fix with `/api/debug-sentry` **before** deleting it.
 - [ ] **`/api/debug-sentry` is deleted** — after, and only after, it has been
       used to prove the box above. (Added in Slice 0 for exactly this.)
+- [ ] **Stop Next buffering `/api/save` bodies in the proxy.** `proxy.ts`
+      matches every route, and Next clones and buffers a request body for
+      the proxy (up to `proxyClientMaxBodySize`, 10 MB) before the route's
+      own byte cap runs. On Vercel the 4.5 MB request limit bounds it.
+      Either exclude `/api/save` from the matcher, since the route
+      authenticates itself, or set the limit just above
+      `SAVE_BODY_MAX_BYTES`. Found by the Slice 10 review.
 - [ ] **Decide what happens when a page's canonical URL is already saved.**
       `adoptCanonicalUrl` in `lib/queue.ts` swallows the unique-key collision,
       so the two items stay two items. Merging means choosing where read
@@ -863,6 +887,82 @@ Second: the `after()` callback must build a service-role client. The session
 client in the route is RLS-scoped, and `item_content` and `fetch_jobs` accept
 writes from the service role only. It fails silently, because Sentry is dead
 and the response has already gone.
+
+## Slice 10 — save the page you are reading
+
+**Agent:** Claude Code. Extension and API together; needs a deploy and a
+reload of the unpacked extension.
+**Files:**
+- `extension/background.ts`, `extension/browser.ts`, `extension/core.ts`,
+  `extension/manifest.json`, `extension/README.md`, `extension/test/`
+- `app/api/save/route.ts`, `lib/save-body.ts` (new), `lib/extract-now.ts`,
+  `lib/queue.ts`
+
+Agreed with Ishank on 2026-09-25 after fetch-on-save showed how often
+publishers refuse a server. On 2026-09-24:
+- NDTV (Akamai) answered 403 to any non-browser client.
+- openai.com (Cloudflare) answered 403 to our honest User-Agent.
+- analyticsindiamag (Cloudflare) served a script shell with no article.
+
+The page the reader is looking at has already loaded in their own browser.
+The extension sends that page with the save, and the server extracts it
+exactly as it would a fetched one. Nothing pretends to be a browser; the
+alternative, a Chrome User-Agent on the server, was considered and rejected
+(ARCHITECTURE section 5, guard 12).
+
+### Done when
+
+- [x] Toolbar click and the shortcut send the open tab's HTML with the URL.
+      The context-menu link save stays URL-only, because that page was never
+      opened.
+      Background tests. The page also reports its own `location.href`, and the HTML is sent only if that matches the saved URL (review finding: an SPA route change between click and read).
+- [x] The only new permission is `scripting`, used on the active tab at the
+      moment of the click. It is explained in one sentence in the README's
+      store text.
+      Firefox's generated manifest also declares `websiteContent` data collection.
+- [x] `/api/save` reads the body with a byte count as it arrives and refuses
+      anything over `SAVE_BODY_MAX_BYTES` with 413. The extension checks the
+      same constant first and drops the page, not the save, when it is too
+      big.
+      Route and `lib/save-body.test.ts`. The review found that `proxy.ts` makes Next buffer the body before the route runs, so the cap bounds parsing, not receipt; that is now a Slice 8 item. The extension upload timeout grows with the body, to 45 s at the cap.
+- [x] A submitted page goes through the same extract and sanitise pipeline and
+      the same job bookkeeping as a fetched one, claimed through
+      `claim_fetch_job_for_item`. The server fetches nothing for it.
+      `lib/queue.test.ts` hands `processJob` a hostile page with the fetcher mocked to throw: no fetch, stored and sanitised. 0009 (`p_page_sent`) lets a sent page skip the fetch backoff. Verified live in a rolled-back block: backoff without a page claims 0, with a page claims 1.
+- [x] A ready item keeps its body; a submitted page never replaces a copy we
+      already have.
+      Route test.
+- [x] An offline save is queued as a link only. Page HTML is never persisted in
+      extension storage, and a replay falls back to the server fetch.
+      Core test: the stored state never contains the page, and the replay body is `{url}`.
+- [x] A page the browser will not let the extension read (Web Store,
+      `chrome://`, PDF viewer) is still saved as a link.
+      Background test.
+- [x] ARCHITECTURE section 1 says a submitted page is not client-side
+      extraction. Sections 5 and 9 say the submitted HTML is untrusted input
+      with the same sanitiser and its own byte cap.
+- [x] Tests for the route (html accepted, too big, wrong type), the queue (a
+      supplied page skips the fetcher), the extension (capture on click and
+      command, none for a link, no HTML on replay, oversize dropped) and the
+      manifest permissions.
+      Root 649 tests and extension 37 tests pass. So do typecheck, lint, the Next build and both extension builds; `node --check` parses the built files.
+- [ ] Hand check by Ishank, after reloading the extension and accepting the new
+      permission: save the NDTV and openai.com articles from the open tab,
+      and both are readable.
+
+### Gotcha
+
+The HTML comes from the party we are defending against: anyone holding a
+token can send any markup for any URL. That is acceptable only because it
+lands in their own library, goes through the same sanitiser as every
+fetched page, and never becomes a fetch. The body cap has to be counted as
+bytes arrive, not trusted from Content-Length. And a submitted page must
+never replace a ready item's body, or re-saving a page becomes a way to
+rewrite an article.
+
+Second: HTML must not go into the offline queue. `chrome.storage.local`
+holds about 10 MB in total; a hundred queued pages would fill it and fail
+every save after it, including the token write.
 
 ---
 
@@ -1457,3 +1557,13 @@ inside this slice. The API acceptance box stays unticked.
 
   The "short" UN News item is a LIVE page. Its static HTML holds three
   paragraphs, and the updates arrive later.
+- **The internet dropped mid-slice, and the order of operations mattered.**
+  The Slice 10 fix sends a new RPC argument (`p_page_sent`). Deploying it
+  before 0009 would have made every fetch-on-save claim fail, and with dead
+  Sentry nobody would have noticed. The commits waited locally until 0009 was
+  applied and verified. Rule: migration first, push second, whenever code
+  calls a changed function signature.
+- **The extension build does not typecheck.** `build.mjs` uses
+  `transpileModule`, which happily emitted a file declaring `body` twice. Run
+  `npm run typecheck` in `extension/` before loading a build, and `node
+  --check` on `dist` if in doubt.

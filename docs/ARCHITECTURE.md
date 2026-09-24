@@ -28,7 +28,11 @@ list of saved things is the product. Everything else serves it.
 - Recommendations or an algorithmic feed.
 - PDFs, video, podcasts. URLs that resolve to HTML articles only.
 - Mobile apps. The web app is a PWA and that is the whole mobile story.
-- Client-side extraction. Extraction is a server concern; see §5.
+- Client-side extraction. Extraction is a server concern; see §5. Since
+  Slice 10 the extension may send the page the reader already has open. That
+  is capture, not extraction: nothing on the client parses the markup, and the
+  server extracts and sanitises it exactly as it would a fetched page. Nothing
+  pretends to be a browser to get it.
 - Bypassing paywalls. A hard paywall is a first-class _failure state_, not a
   problem to solve. See §6.
 
@@ -260,6 +264,25 @@ a second one, that is the bug.
     taxonomy in §6. Never return the raw error, the resolved IP, the timing, or
     the redirect chain to the user. Differentiated errors turn the fetcher into
     a blind-SSRF oracle for mapping an internal network.
+
+### Pages the reader sends (Slice 10)
+
+A toolbar or shortcut save from the extension carries the open tab's HTML.
+No request is made on its behalf, so none of the guards above run, and none
+need to: nothing is fetched. What replaces them is:
+
+- a byte cap, `SAVE_BODY_MAX_BYTES` in `lib/save-body.ts`, counted as the route
+  reads the body and never trusted from Content-Length, answered with 413.
+  It bounds what we decode, not what is received. `proxy.ts` matches the
+  route, so Next buffers the body first (up to 10 MB by default), and Vercel
+  refuses anything over 4.5 MB before that. Narrowing the proxy is in Slice 8;
+- the same extractor and sanitiser as a fetched page, through the same
+  `processJob` and the same item-scoped claim;
+- the rule that a ready item keeps its body. A sent page can fill an empty
+  item but can never rewrite a stored one.
+
+Anyone with a token can send any markup for any URL. That is tolerable only
+because it lands in their own library and is sanitised on the way in.
 
 ### Runtime
 
@@ -548,6 +571,11 @@ optional. There is **no** fallback to a placeholder value anywhere.
   allowance. The existing count-then-save concurrency behavior is unchanged.
 - **Zero secrets in committed files.** Not in tests, not in fixtures, not in
   comments, not in a `.env.example` that "just has the dev one".
+- **Sent pages are untrusted input (Slice 10).** The extension's `scripting`
+  permission is used on the active tab only, at the click, to read
+  `document.documentElement.outerHTML`. The page is sent once and never
+  stored in the extension, so the offline queue still holds links only. See
+  §5, "Pages the reader sends".
 
 ---
 
@@ -770,3 +798,11 @@ re-litigate. Date, decision, reason.
   `item_content`. The save route and the reader page set `maxDuration = 60`.
   A fetch cut off by the platform stays `running` until the daily run's
   stale-lock reclaim takes it.
+- **2026-09-25 — The extension sends the page the reader has open (Slice 10).**
+  Fetch-on-save showed how many publishers refuse a server outright. NDTV
+  refused even a Chrome User-Agent, and Cloudflare served an empty shell. A
+  Chrome User-Agent on the server was rejected: it is dishonest (§5, guard
+  12) and would not have worked for Akamai. The reader's browser already has
+  the page, so the extension sends it, and extraction stays on the server.
+  Offline replays send the link only, because `storage.local` cannot hold
+  pages.
