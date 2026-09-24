@@ -467,8 +467,12 @@ function bareMetadata(url: string): ArticleMetadata {
 /**
  * Turn a fetched page into an article, or say which failure it is.
  *
- * Never throws: a page that cannot be extracted is an expected outcome with
- * copy attached, not an exception. See FAIL_REASON_COPY in lib/constants.ts.
+ * Does not throw over the page: a page that cannot be extracted is an expected
+ * outcome with copy attached, not an exception. See FAIL_REASON_COPY in
+ * lib/constants.ts. `input.url` is canonicalised, though, so a URL that is not
+ * http(s) throws InvalidUrlError. Every caller today passes the fetcher's final
+ * URL, which has passed section 5; a caller with content but no fetched URL
+ * (an email, an import) must not assume otherwise.
  */
 export function extractArticle(input: ExtractInput): ExtractOutcome {
   const { document } = parseHTML(input.html);
