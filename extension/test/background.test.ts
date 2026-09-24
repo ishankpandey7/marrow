@@ -50,7 +50,19 @@ function browserFixture() {
     scripting: {
       executeScript: vi
         .fn()
-        .mockResolvedValue([{ result: "<html><body>page</body></html>" }]),
+        .mockImplementation(
+          async ({ target }: { target: { tabId: number } }) => [
+            {
+              result: {
+                url:
+                  target.tabId === 3
+                    ? "https://example.com/current#section"
+                    : "https://example.com/active",
+                html: "<html><body>page</body></html>",
+              },
+            },
+          ],
+        ),
     },
     contextMenus: {
       removeAll: vi.fn().mockResolvedValue(undefined),
@@ -110,6 +122,23 @@ describe("browser event wiring", () => {
       );
     },
   );
+
+  it("drops the page when the tab moved on between the click and the read", async () => {
+    const api = await load();
+    api.scripting.executeScript.mockResolvedValue([
+      { result: { url: "https://example.com/other", html: "<p>other</p>" } },
+    ]);
+    api.action.onClicked.listeners[0]({
+      id: 5,
+      url: "https://example.com/clicked",
+    });
+    await vi.waitFor(() =>
+      expect(controller.save).toHaveBeenCalledWith(
+        "https://example.com/clicked",
+        undefined,
+      ),
+    );
+  });
 
   it("still saves the link when the browser will not let it read the page", async () => {
     const api = await load();

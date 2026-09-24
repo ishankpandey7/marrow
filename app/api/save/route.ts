@@ -114,8 +114,11 @@ export async function POST(request: NextRequest) {
 
   const supabase = scope.client;
 
-  // Read only after authentication: an anonymous caller never gets us to
-  // buffer three megabytes.
+  // Parsed only after authentication, and capped as we read. This bounds what
+  // we decode, not what arrives: proxy.ts matches this route, so Next clones
+  // and buffers the body before we run (up to proxyClientMaxBodySize, 10 MB
+  // by default), and Vercel refuses requests over 4.5 MB before either.
+  // Slice 8 carries narrowing the proxy for this route.
   let payload: unknown;
   try {
     payload = JSON.parse(await readCappedText(request));

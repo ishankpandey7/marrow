@@ -179,15 +179,20 @@ export async function claimJobs(
  * oldest jobs of any user. Null is the normal answer when the job is already
  * running elsewhere, has spent its attempts, or was never queued because the
  * item was ready.
+ *
+ * `pageSent` skips the fetch backoff (0009): the backoff spares a struggling
+ * publisher, and with a page from the reader nobody asks the publisher.
  */
 export async function claimItemJob(
   client: SupabaseClient,
   itemId: string,
   userId: string,
+  pageSent = false,
 ): Promise<ClaimedJob | null> {
   const { data, error } = await client.rpc("claim_fetch_job_for_item", {
     p_item_id: itemId,
     p_user_id: userId,
+    p_page_sent: pageSent,
   });
 
   if (error) {

@@ -37,7 +37,7 @@ export interface ExtensionApi {
   scripting: {
     executeScript(injection: {
       target: { tabId: number };
-      func: () => string;
+      func: () => { url: string; html: string };
     }): Promise<{ result?: unknown }[]>;
   };
   contextMenus: {
@@ -89,20 +89,45 @@ export function extensionApi(): ExtensionApi {
  * work at all. activeTab grants this tab only, only for this gesture. Null
  * when the browser forbids it — Web Store, browser pages, the PDF viewer —
  * and the save then goes ahead as a link.
+ *
+ * The page reports its own address alongside its markup, and the markup is
+ * used only if that address is the one being saved. The worker may start
+ * after the click, and a single-page app can change route in between; a URL
+ * paired with another page's article would be stored for good, because a
+ * ready item keeps its body.
  */
 export async function capturePage(
   api: ExtensionApi,
-  tabId: number | undefined,
+  tab: Tab | undefined,
 ): Promise<string | undefined> {
-  if (tabId === undefined) return undefined;
+  if (tab?.id === undefined || !tab.url) return undefined;
   try {
     const [frame] = await api.scripting.executeScript({
-      target: { tabId },
-      func: () => document.documentElement.outerHTML,
+      target: { tabId: tab.id },
+      func: () => ({
+        url: location.href,
+        html: document.documentElement.outerHTML,
+      }),
     });
-    return typeof frame?.result === "string" ? frame.result : undefined;
+    const page = frame?.result as { url?: unknown; html?: unknown } | undefined;
+    if (typeof page?.url !== "string" || typeof page.html !== "string")
+      return undefined;
+    return samePage(page.url, tab.url) ? page.html : undefined;
   } catch {
     return undefined;
+  }
+}
+
+/** Same document, ignoring only the fragment, which never changes the page. */
+function samePage(a: string, b: string): boolean {
+  try {
+    const left = new URL(a);
+    const right = new URL(b);
+    left.hash = "";
+    right.hash = "";
+    return left.href === right.href;
+  } catch {
+    return false;
   }
 }
 

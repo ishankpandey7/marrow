@@ -128,6 +128,17 @@ function saveBody(url: string, html: string | undefined): string {
   return JSON.stringify({ url });
 }
 
+/**
+ * Fifteen seconds for a link, plus one per 100 kB of page. The whole upload
+ * happens inside this timeout, and the page cannot be retried: it is never
+ * stored, so a slow uplink that timed out at 15 s lost it. At SAVE_BODY_MAX_BYTES
+ * this is 45 s, inside the save route's 60 s ceiling.
+ */
+function uploadTimeout(body: string): number {
+  const bytes = new TextEncoder().encode(body).byteLength;
+  return 15_000 + Math.ceil(bytes / 100_000) * 1_000;
+}
+
 function retryDelay(response: Response, now: number): number {
   const header = response.headers.get("Retry-After");
   if (header) {
@@ -172,6 +183,7 @@ export function createSaveController(deps: Dependencies) {
     // replay then deliberately uses the API's atomic re-save semantics.
     job.nextAt = deps.now() + RETRY_DELAY;
     await publish(state, { status: "saving", message: "Saving…" });
+    const requestBody = saveBody(job.url, html);
     let response: Response;
     try {
       response = await deps.fetch(deps.endpoint, {
@@ -180,11 +192,11 @@ export function createSaveController(deps: Dependencies) {
           Authorization: `Bearer ${state.token}`,
           "Content-Type": "application/json",
         },
-        body: saveBody(job.url, html),
+        body: requestBody,
         credentials: "omit",
         redirect: "error",
         referrerPolicy: "no-referrer",
-        signal: AbortSignal.timeout(15_000),
+        signal: AbortSignal.timeout(uploadTimeout(requestBody)),
       });
     } catch {
       job.nextAt =

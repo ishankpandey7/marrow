@@ -19,9 +19,10 @@ export class BodyTooLargeError extends Error {
 /**
  * Read a request body as text, stopping at `maxBytes`.
  *
- * Count bytes as they arrive: Content-Length is supplied by the party we are
- * defending against, and a body that never ends would otherwise be buffered
- * until the function runs out of memory or time.
+ * Count bytes as they are read: Content-Length is supplied by the party we
+ * are defending against. On this app the stream has usually been buffered
+ * already by Next's proxy body clone, so this bounds what we decode and
+ * parse; the platform's request limit bounds what is received.
  */
 export async function readCappedText(
   request: Request,

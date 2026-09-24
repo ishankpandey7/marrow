@@ -878,12 +878,14 @@ grant execute on function public.purge_deleted_items(interval) to service_role;
 -- queued. claim_fetch_jobs takes the oldest jobs of any user; used inside a
 -- save it would spend this user's request fetching someone else's links.
 -- Whoever loses the SKIP LOCKED race (the cron, a second tap, the extension's
--- offline replay) gets no row and does nothing.
+-- offline replay) gets no row and does nothing. p_page_sent (0009) skips the
+-- fetch backoff when the reader sent the page, because no publisher is asked.
 -- ----------------------------------------------------------------------------
 
 create or replace function public.claim_fetch_job_for_item(
-  p_item_id uuid,
-  p_user_id uuid
+  p_item_id   uuid,
+  p_user_id   uuid,
+  p_page_sent boolean default false
 )
 returns setof public.claimed_fetch_job
 language sql
@@ -902,7 +904,7 @@ as $$
               where c.item_id = p_item_id
                 and c.user_id = p_user_id
                 and c.state = 'queued'
-                and c.run_after <= now()
+                and (p_page_sent or c.run_after <= now())
                 and c.attempts < c.max_attempts
                 and i.deleted_at is null
               limit 1
@@ -915,9 +917,9 @@ as $$
     join public.items i on i.id = c.item_id;
 $$;
 
-revoke all on function public.claim_fetch_job_for_item(uuid, uuid)
+revoke all on function public.claim_fetch_job_for_item(uuid, uuid, boolean)
   from public, anon, authenticated;
-grant execute on function public.claim_fetch_job_for_item(uuid, uuid)
+grant execute on function public.claim_fetch_job_for_item(uuid, uuid, boolean)
   to service_role;
 
 -- ============================================================================

@@ -75,6 +75,7 @@ describe("extractSoon", () => {
       mocks.client,
       "item-1",
       "owner-1",
+      false,
     );
     expect(mocks.processJob).toHaveBeenCalledWith(mocks.client, job, {
       page: undefined,
@@ -88,6 +89,13 @@ describe("extractSoon", () => {
     const page = { url: job.url, html: "<html></html>" };
     extractSoon("item-1", "owner-1", "api/save", page);
     await mocks.scheduled[0]();
+    // A sent page is not held back by a fetch backoff (0009).
+    expect(mocks.claimItemJob).toHaveBeenCalledWith(
+      mocks.client,
+      "item-1",
+      "owner-1",
+      true,
+    );
     expect(mocks.processJob).toHaveBeenCalledWith(mocks.client, job, { page });
   });
 

@@ -49,7 +49,7 @@ async function installMenu() {
 // The open page goes with the save; a link from the context menu was never
 // opened, so it is saved as a link and fetched by the server.
 async function saveTab(tab: Tab | undefined) {
-  return controller.save(tab?.url, await capturePage(api, tab?.id));
+  return controller.save(tab?.url, await capturePage(api, tab));
 }
 
 api.action.onClicked.addListener((tab) => run(saveTab(tab)));

@@ -206,7 +206,13 @@ describe("claimItemJob", () => {
     expect(c.rpc).toHaveBeenCalledWith("claim_fetch_job_for_item", {
       p_item_id: "item-1",
       p_user_id: "owner-1",
+      p_page_sent: false,
     });
+    await claimItemJob(c.client, "item-1", "owner-1", true);
+    expect(c.rpc).toHaveBeenLastCalledWith(
+      "claim_fetch_job_for_item",
+      expect.objectContaining({ p_page_sent: true }),
+    );
   });
 
   it("returns null when another worker holds it or nothing was queued", async () => {

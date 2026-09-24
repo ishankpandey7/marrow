@@ -38,7 +38,12 @@ export function extractSoon(
       // accept writes from nobody else, and an RLS-scoped write here would
       // fail after the response, where no one would see it.
       const client = createServiceSupabase();
-      const job = await claimItemJob(client, itemId, userId);
+      const job = await claimItemJob(
+        client,
+        itemId,
+        userId,
+        page !== undefined,
+      );
       if (job) recordJobReport(await processJob(client, job, { page }), route);
     } catch (error) {
       Sentry.captureException(error, { tags: { route } });
