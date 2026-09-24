@@ -117,8 +117,8 @@ describe("planSettlement", () => {
   });
 
   it("gives up once the attempts are spent", () => {
-    // The user gets a final answer roughly six minutes after saving, with the
-    // retry button the taxonomy allows, rather than half an hour of spinner.
+    // The user gets a final answer with the retry button the taxonomy allows,
+    // rather than an endless spinner.
     expect(planSettlement("unreachable", MAX, MAX, T0)).toEqual({
       kind: "failed",
     });

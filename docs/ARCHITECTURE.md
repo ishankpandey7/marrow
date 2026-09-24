@@ -85,7 +85,6 @@ app/
     settings/
   api/
     save/route.ts         POST a URL. Creates the item, enqueues extraction.
-    extract/route.ts      Runs the pipeline for one item. Node runtime.
     cron/                 Scheduled work. Guarded by CRON_SECRET.
   auth/                   Magic-link callback and sign-out.
   globals.css
@@ -563,10 +562,11 @@ seconds for a page fetch to finish.
 - Retries: only for transient reasons — `unreachable` and `server_error`.
   Retrying a 404 is someone else's server paying for our optimism.
 - Backoff between attempts walks 1 min, 5 min, 25 min, and how far down that a
-  job goes is capped by its own `max_attempts` column. The default is 3, so an
-  unreachable site gives the user a final answer about six minutes after they
-  saved rather than half an hour of "Fetching the article"; the 25-minute step
-  is reached only by a row whose cap has been raised deliberately.
+  job goes is capped by its own `max_attempts` column. The default is 3; the
+  25-minute step is reached only by a row whose cap has been raised
+  deliberately. The minutes are a floor: a job is claimed only when the cron
+  runs, so on the daily schedule below each retry waits for the next day's run
+  and an unreachable site gets its final answer about two days after saving.
 - Vercel Cron drives `/api/cron/extract`; each run claims a small batch with
   `for update skip locked` so overlapping invocations cannot process the same
   job twice. `attempts` increments at claim time, not at settle time: a worker
@@ -734,3 +734,24 @@ re-litigate. Date, decision, reason.
   budget stops it _starting_ another round, well short of `maxDuration`,
   because a run the platform kills leaves its rows locked for the stale-lock
   window.
+- **2026-09-24 — The save limit lives in Postgres too.** `save_item` is
+  granted to `authenticated`, so `/rest/v1/rpc/save_item` never passed through
+  `/api/save` and its 60-an-hour check; with open sign-up that was an unmetered
+  queue of server-side fetches. `enforce_save_limit` (0006) counts the same
+  `save_events` window under a per-user advisory lock and raises `PT429`, which
+  PostgREST turns into HTTP 429. Both save doors and `retry_item` spend it. The
+  route keeps its own check because only it can put the wait into words; a
+  test in `test/schema.test.ts` fails if the two numbers drift.
+- **2026-09-24 — Try again is `retry_item`, not a re-save.** Re-saving
+  un-archives by design; retrying a failed fetch should change fetch state and
+  nothing else.
+- **2026-09-24 — Child rows reference `(id, user_id)`.** `item_tags` and
+  `highlights` policies pin `user_id` to `auth.uid()`, but a plain foreign key
+  only proves the parent exists, and FK checks ignore RLS. Composite keys to
+  `items (id, user_id)` and `tags (id, user_id)` (0007) make the row's owner
+  own the parent as well.
+- **2026-09-24 — `POST /api/extract` is removed.** Nothing called it after the
+  queue shipped, it re-fetched without the save limit, and a failed re-fetch
+  turned a ready item into a failed one while its stored copy still existed.
+  The queue (`lib/queue.ts`) is now the only writer of extraction results. The
+  2026-09-10 entry above describes the state before this.

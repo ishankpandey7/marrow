@@ -29,10 +29,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 /**
  * Jobs claimed per invocation.
  *
- * Kept small on purpose. The cron fires every minute, so throughput is five a
- * minute without any run ever approaching the platform's ceiling — and a run
- * that is killed for running long leaves rows locked, which costs more than
- * the backlog it was trying to clear. The batch is fetched concurrently, so
+ * Kept small on purpose: a run that is killed for running long leaves rows
+ * locked, which costs more than the backlog it was trying to clear. Throughput
+ * comes from the drain loop below, not from this number. The batch is fetched concurrently, so
  * the wall clock is one fetch budget, not five.
  */
 export const CLAIM_BATCH_SIZE = 5;
@@ -75,12 +74,12 @@ export const RETRIABLE_REASONS: ReadonlySet<FailReason> = new Set<FailReason>([
  * Backoff between attempts, in minutes, indexed by attempts already made.
  *
  * The schedule is the one in ARCHITECTURE section 10. How far down it a job
- * walks is capped by its own `max_attempts` column, which defaults to 3 — so
- * with the default a job runs, waits a minute, runs, waits five, runs, and
- * then gives the user a final answer about six minutes after they saved. The
- * twenty-five-minute step is reached only by a row whose max_attempts has been
- * raised deliberately. Six minutes to "Couldn't reach that site" is a better
- * product than half an hour of "Fetching the article".
+ * walks is capped by its own `max_attempts` column, which defaults to 3. The
+ * minutes are a floor, not a schedule: a job is only claimed when the cron
+ * runs, and on Vercel Hobby that is once a day, so a retriable failure gets
+ * its next attempt at the next daily run — roughly a final answer two days
+ * after the save, not six minutes. The twenty-five-minute step is reached
+ * only by a row whose max_attempts has been raised deliberately.
  */
 export const BACKOFF_MINUTES = [1, 5, 25] as const;
 
@@ -290,13 +289,10 @@ const UNIQUE_VIOLATION = "23505";
  * lock nothing will clear for five minutes, so every path here settles the row
  * — including the paths where our own database is the thing that failed.
  *
- * The writes below deliberately mirror `POST /api/extract` rather than sharing
- * with it. That route is the reader-facing retry: it runs under the signed-in
- * user, is scoped by RLS, and handles one item. This runs under the service
- * role across every user's rows and owns the job's bookkeeping as well. The
- * pipeline itself — lib/fetcher, lib/extract, lib/sanitize — is shared, and
- * that is the part where duplication would actually be dangerous. Folding the
- * two write paths together is noted in ROADMAP.md for Slice 8.
+ * This is the only place an extraction result is written. It runs under the
+ * service role across every user's rows and owns the job's bookkeeping; the
+ * reader's Try again re-queues a job through retry_item rather than fetching
+ * inline.
  */
 export async function processJob(
   client: SupabaseClient,
