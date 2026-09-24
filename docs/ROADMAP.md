@@ -20,7 +20,59 @@ not check is worse than an unticked one, because next session it gets skipped.
 
 Kept current at the end of every session. Read this first; it is the handoff.
 
-**Last updated: 2026-09-23 — infrastructure paused; Slice 6 browser checks partly done.**
+**Last updated: 2026-09-24 — earlier-slice bug pass done; next is the feature list below.**
+
+- **Four earlier-slice bugs are fixed** (`fa8dea9`, `1d78275`, `c6eab02`),
+  found by a read-only review on 2026-09-23 and re-verified before fixing:
+  1. `save_item` bypassed the 60/hour limit over PostgREST. `0006` puts the
+     limit in Postgres (`enforce_save_limit`, raises `PT429`).
+  2. Try again un-archived items and skipped the limit. It now calls the new
+     `retry_item`.
+  3. `item_tags`/`highlights` did not check that the parent belongs to the
+     row's owner. `0007` adds composite foreign keys.
+  4. `POST /api/extract` had no caller and no limit, and could flip a ready
+     item to failed. It is deleted.
+
+  Stale "six minutes"/"every minute" docs are corrected, and the dead
+  `ItemRow`/`EmptyState` components are deleted.
+- **0006 and 0007 are applied and exercised on the real database** inside a
+  DO block that ends in `raise`, so nothing was kept:
+  - an under-limit save succeeds;
+  - the 61st save raises `PT429`;
+  - retry keeps `archived_at` and queues one job;
+  - a cross-user `item_tags` insert fails with `23503`;
+  - `enforce_save_limit` is executable by nobody, `retry_item` only by
+    authenticated.
+
+  Typecheck, lint, **626 tests** and `next build` pass.
+- **What Ishank must check by hand for this pass (about 5 minutes):**
+  1. Save a link from /inbox. It saves.
+  2. Tag an item and untag it. Both work.
+  3. On a failed item that is archived, press Try again in the reader. It
+     says "Retry queued" and the item stays in Archive.
+- **Supabase is up; Ishank pauses it deliberately when idle.** Restore it
+  before any database work. The CLI re-resolved to the same path as before
+  (`npm-cache/_npx/aa8e5c70f9d8d161/.../supabase`, 2.117.0). It still needs
+  sandbox escalation. `db push --db-url ... --yes` answers the prompt.
+  `db query --file` accepts one statement only; wrap multi-step checks in a
+  DO block. The Vercel CLI was not re-resolved.
+- **Next, agreed 2026-09-24:** write each of these as a slice (checklist and
+  Gotcha) before building it, in this order:
+  1. fetch on save (`after()` plus an item-scoped claim RPC)
+  2. highlights + notes
+  3. Trash view
+  4. "From your backlog" strip
+  5. listen mode
+  6. reading stats
+  7. Pocket/Instapaper import
+  8. AI summary
+
+  Migrations continue from **0008**.
+- **Left in place on purpose:** `lib/db/browser.ts` and `optionalEnv` have no
+  importers. They are the documented client-component client and the
+  optional-key hook; Slice 8 removes them if nothing has used them by then.
+
+_Previous handoff, 2026-09-23 — infrastructure paused; Slice 6 browser checks partly done:_
 
 - **Supabase is PAUSED. Restore it before anything touches the database.**
   Checked 2026-09-23: the project hostname (`kdhj….supabase.co`) returns
@@ -678,6 +730,16 @@ fast as they like. Test the 401 by actually calling it from outside.
       fix with `/api/debug-sentry` **before** deleting it.
 - [ ] **`/api/debug-sentry` is deleted** — after, and only after, it has been
       used to prove the box above. (Added in Slice 0 for exactly this.)
+- [ ] **Decide what happens when a page's canonical URL is already saved.**
+      `adoptCanonicalUrl` in `lib/queue.ts` swallows the unique-key collision,
+      so the two items stay two items. Merging means choosing where read
+      position, tags and highlights go. Earlier code said "tracked in
+      ROADMAP.md", but it never was until 2026-09-24.
+- [ ] **Launch decision on extraction latency.** ARCHITECTURE section 10: on
+      Hobby's daily cron a save can wait a day to become readable, and a
+      retriable failure waits a day per attempt. The fetch-on-save slice is
+      the planned answer for the first save; retries still need a decision.
+      This was also said to be tracked here and was not.
 - [ ] **Decide whether `/reader-preview/[id]` stays or is removed before
       launch.** It is currently a public, permanent fixture route on production;
       record the decision and carry it out deliberately.
@@ -1272,3 +1334,26 @@ no value was substituted, changed or printed. Check the deployed secret's
 presence/length and service-client configuration before browser acceptance.
 Do not assume the 500 proves which setting failed, and do not repair Sentry
 inside this slice. The API acceptance box stays unticked.
+
+### 2026-09-24 — earlier-slice bug pass
+
+- **The limit had a side door.** `/api/save` counted `save_events` before
+  calling `save_item`, but `save_item` is itself granted to `authenticated`,
+  and PostgREST exposes every granted function. The route was a check in
+  front of one door of a two-door room. The fix puts the count inside the
+  function, under `pg_advisory_xact_lock` so two concurrent saves cannot both
+  see 59. The route check stays because only it can say "try again in 12
+  minutes". `raise sqlstate 'PT429'` is PostgREST's convention for choosing
+  the HTTP status, so a direct caller gets a real 429.
+- **An FK is not an ownership check.** Foreign-key checks run without RLS, so
+  `item_tags (item_id) references items (id)` accepted any user's item id.
+  Referencing `(id, user_id)` needs a redundant `unique (id, user_id)` on the
+  parent, which is cheap and is the whole fix.
+- **`db query --file` runs one prepared statement.** A second statement fails
+  with "cannot insert multiple commands into a prepared statement". A DO block
+  that ends in `raise exception 'VERIFY …'` runs any number of checks, reports
+  them in the error text, and rolls everything back; a follow-up count
+  confirmed nothing was left.
+- **`next typegen` keeps deleted routes alive.** After `app/api/extract` was
+  removed, `tsc` still failed on `.next/dev/types/validator.ts` importing it.
+  That directory is generated by `next dev`; deleting it fixed the check.
