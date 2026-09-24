@@ -815,9 +815,12 @@ Numbered 9 because it was written after 8, not because it waits for it. Slices
 
 ### Done when
 
-- [ ] A link saved from `/inbox` or the extension becomes readable within
+- [x] A link saved from `/inbox` or the extension becomes readable within
       seconds, without waiting for the daily cron. `/api/save` answers first
       and fetches in `after()`.
+      Verified on 2026-09-24 from job timestamps on the deployment. Al Jazeera
+      was ready 2 s after the save and UN News 7 s after. The three failures
+      that evening settled in 1–3 s instead of waiting for the next day.
 - [x] Only the job that save queued is claimed, through
       `claim_fetch_job_for_item(item, owner)`: service-role only,
       `for update skip locked`, and attempts counted exactly as in
@@ -845,6 +848,8 @@ Numbered 9 because it was written after 8, not because it waits for it. Slices
       remedy is a plan or an external scheduler, not a code change".
 - [ ] Hand check by Ishank: save from `/inbox` and from the extension, open
       each about 15 s later, and the article is there.
+      /inbox is confirmed by Ishank ("manually diya to instant aa gaya"). The
+      extension has not been reported yet.
 
 ### Gotcha
 
@@ -1439,3 +1444,16 @@ inside this slice. The API acceptance box stays unticked.
   was fine, but the paste-the-whole-file setup in SETUP.md would have failed
   on the first statement. The review agent caught it, and
   `test/schema.test.ts` now checks the quotes. Use a replacer function.
+- **Fetch-on-save made blocking visible (2026-09-25).** Of five saves on
+  2026-09-24, two were ready. The other three failed, and none of them was a
+  Marrow fault:
+  - NDTV (Akamai) returns 403 to any non-browser client, including curl with
+    a Chrome User-Agent.
+  - openai.com (Cloudflare) returns 403 to our honest User-Agent and 200 to a
+    Chrome one, at least from a residential IP.
+  - analyticsindiamag answers 200 with a Cloudflare script shell titled
+    "AIM — AI & Data Science News", which Readability correctly calls
+    no_content.
+
+  The "short" UN News item is a LIVE page. Its static HTML holds three
+  paragraphs, and the updates arrive later.
