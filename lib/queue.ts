@@ -17,7 +17,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 
 import { extractArticle, type ArticleMetadata } from "@/lib/extract";
-import { fetchPage, type FetchNote } from "@/lib/fetcher";
+import { fetchPage, type FetchNote, type FetchOutcome } from "@/lib/fetcher";
 import type { FailReason } from "@/lib/types";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -31,8 +31,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  *
  * Kept small on purpose: a run that is killed for running long leaves rows
  * locked, which costs more than the backlog it was trying to clear. Throughput
- * comes from the drain loop below, not from this number. The batch is fetched concurrently, so
- * the wall clock is one fetch budget, not five.
+ * comes from the drain loop below, not from this number. The batch is fetched
+ * concurrently, so the wall clock is one fetch budget, not five.
  */
 export const CLAIM_BATCH_SIZE = 5;
 
@@ -287,8 +287,22 @@ export interface JobReport {
   readonly warning: string | null;
 }
 
+/** A page the reader already has open, sent with the save (Slice 10). */
+export interface SubmittedPage {
+  /** Where the reader was. Relative links in the markup resolve to it. */
+  readonly url: string;
+  readonly html: string;
+}
+
 export interface ProcessJobOptions {
   readonly now?: Clock;
+  /**
+   * Use this markup instead of fetching. Everything after the fetch — the
+   * extractor, the sanitiser, the item and content writes, the settlement —
+   * is the same code, so a submitted page is held to exactly the rules a
+   * fetched one is.
+   */
+  readonly page?: SubmittedPage;
 }
 
 function metadataColumns(metadata: ArticleMetadata) {
@@ -327,7 +341,7 @@ export async function processJob(
   const now = options.now ?? Date.now;
 
   try {
-    return await runJob(client, job, now);
+    return await runJob(client, job, now, options.page);
   } catch (error) {
     // fetchPage and extractArticle both promise not to throw. If one of them
     // breaks that promise the row still has to be settled, or it holds a lock
@@ -359,8 +373,20 @@ async function runJob(
   client: SupabaseClient,
   job: ClaimedJob,
   now: Clock,
+  submitted: SubmittedPage | undefined,
 ): Promise<JobReport> {
-  const fetched = await fetchPage(job.url);
+  const fetched: FetchOutcome = submitted
+    ? {
+        ok: true,
+        page: {
+          url: submitted.url,
+          status: 200,
+          contentType: "text/html",
+          html: submitted.html,
+          bytes: Buffer.byteLength(submitted.html, "utf8"),
+        },
+      }
+    : await fetchPage(job.url);
 
   if (!fetched.ok) {
     return await settleFailure(client, job, fetched.reason, null, {

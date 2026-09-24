@@ -76,8 +76,19 @@ describe("extractSoon", () => {
       "item-1",
       "owner-1",
     );
-    expect(mocks.processJob).toHaveBeenCalledWith(mocks.client, job);
+    expect(mocks.processJob).toHaveBeenCalledWith(mocks.client, job, {
+      page: undefined,
+    });
     expect(mocks.captureMessage).not.toHaveBeenCalled();
+  });
+
+  it("hands a page the reader sent to the job instead of fetching", async () => {
+    mocks.claimItemJob.mockResolvedValue(job);
+    mocks.processJob.mockResolvedValue(report({}));
+    const page = { url: job.url, html: "<html></html>" };
+    extractSoon("item-1", "owner-1", "api/save", page);
+    await mocks.scheduled[0]();
+    expect(mocks.processJob).toHaveBeenCalledWith(mocks.client, job, { page });
   });
 
   it("runs nothing when the claim comes back empty", async () => {

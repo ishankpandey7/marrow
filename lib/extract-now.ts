@@ -4,7 +4,12 @@ import { after } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 
 import { createServiceSupabase } from "@/lib/db/service";
-import { claimItemJob, processJob, type JobReport } from "@/lib/queue";
+import {
+  claimItemJob,
+  processJob,
+  type JobReport,
+  type SubmittedPage,
+} from "@/lib/queue";
 
 /**
  * Fetch a just-queued item after the response has gone (Slice 9).
@@ -16,8 +21,17 @@ import { claimItemJob, processJob, type JobReport } from "@/lib/queue";
  *
  * `userId` must be the verified owner — the `user_id` on the row our own save
  * or retry RPC returned, never request input. The claim is keyed on it.
+ *
+ * With `page`, the markup the reader's browser already loaded is extracted
+ * instead of fetching (Slice 10). It is claimed the same way, so it cannot
+ * race a cron fetch of the same item.
  */
-export function extractSoon(itemId: string, userId: string, route: string) {
+export function extractSoon(
+  itemId: string,
+  userId: string,
+  route: string,
+  page?: SubmittedPage,
+) {
   after(async () => {
     try {
       // Service role, not the caller's client: item_content and fetch_jobs
@@ -25,7 +39,7 @@ export function extractSoon(itemId: string, userId: string, route: string) {
       // fail after the response, where no one would see it.
       const client = createServiceSupabase();
       const job = await claimItemJob(client, itemId, userId);
-      if (job) recordJobReport(await processJob(client, job), route);
+      if (job) recordJobReport(await processJob(client, job, { page }), route);
     } catch (error) {
       Sentry.captureException(error, { tags: { route } });
     }

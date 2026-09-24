@@ -1,11 +1,24 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// A sent page must never reach the network; any fetch in these tests is a bug.
+vi.mock("@/lib/fetcher", async (original) => ({
+  ...(await original<typeof import("@/lib/fetcher")>()),
+  fetchPage: vi.fn(async () => {
+    throw new Error("processJob fetched a page it was handed");
+  }),
+}));
+
+import { fetchPage } from "@/lib/fetcher";
 import {
   BACKOFF_MINUTES,
   authoriseCronRequest,
   claimItemJob,
   planSettlement,
+  processJob,
 } from "@/lib/queue";
 import type { FailReason } from "@/lib/types";
 
@@ -210,5 +223,66 @@ describe("claimItemJob", () => {
         "u",
       ),
     ).rejects.toThrow("down");
+  });
+});
+
+describe("processJob with a page the reader sent", () => {
+  it("extracts the sent markup, never fetches, and stores it like a fetched page", async () => {
+    const writes: { table: string; op: string; values: unknown }[] = [];
+    const table = (name: string) => ({
+      update: (values: unknown) => {
+        writes.push({ table: name, op: "update", values });
+        return { eq: async () => ({ error: null }) };
+      },
+      upsert: async (values: unknown) => {
+        writes.push({ table: name, op: "upsert", values });
+        return { error: null };
+      },
+    });
+    const client = { from: table } as unknown as SupabaseClient;
+    // A hostile page, as a token holder could send one.
+    const html = readFileSync(
+      fileURLToPath(
+        new URL("../test/fixtures/news-article.html", import.meta.url),
+      ),
+      "utf8",
+    ).replace("</p>", "<script>alert(document.cookie)</script></p>");
+    expect(html).toMatch(/<script>alert/);
+    const job = {
+      job_id: 9,
+      item_id: "item-9",
+      user_id: "owner-9",
+      url: "https://news.example/story",
+      url_hash: "b".repeat(64),
+      attempts: 1,
+      max_attempts: 3,
+    };
+
+    const result = await processJob(client, job, {
+      page: { url: job.url, html },
+    });
+
+    expect(fetchPage).not.toHaveBeenCalled();
+    expect(result.outcome).toBe("done");
+    expect(writes).toContainEqual(
+      expect.objectContaining({
+        table: "items",
+        values: expect.objectContaining({ status: "ready" }),
+      }),
+    );
+    expect(writes).toContainEqual(
+      expect.objectContaining({
+        table: "item_content",
+        values: expect.objectContaining({
+          item_id: "item-9",
+          user_id: "owner-9",
+        }),
+      }),
+    );
+    // What is stored went through the sanitiser: no script survives.
+    const stored = writes.find((w) => w.table === "item_content")?.values as {
+      html: string;
+    };
+    expect(stored.html).not.toMatch(/<script/i);
   });
 });

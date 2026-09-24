@@ -6,6 +6,7 @@ import { InvalidUrlError, canonicalise } from "@/lib/canonical";
 import { createServerSupabase } from "@/lib/db/server";
 import { createServiceSupabase } from "@/lib/db/service";
 import { extractSoon } from "@/lib/extract-now";
+import { BodyTooLargeError, readCappedText } from "@/lib/save-body";
 import {
   checkSaveRateLimit,
   SAVE_LIMIT_SQLSTATE,
@@ -113,21 +114,37 @@ export async function POST(request: NextRequest) {
 
   const supabase = scope.client;
 
+  // Read only after authentication: an anonymous caller never gets us to
+  // buffer three megabytes.
   let payload: unknown;
   try {
-    payload = await request.json();
-  } catch {
+    payload = JSON.parse(await readCappedText(request));
+  } catch (error) {
+    if (error instanceof BodyTooLargeError) {
+      return respond(
+        { error: "That page is too big to send. Save the link instead." },
+        { status: 413 },
+      );
+    }
     return respond({ error: "Expected JSON." }, { status: 400 });
   }
 
-  const raw =
-    typeof payload === "object" && payload !== null && "url" in payload
-      ? (payload as { url: unknown }).url
-      : undefined;
+  const fields =
+    typeof payload === "object" && payload !== null
+      ? (payload as { url?: unknown; html?: unknown })
+      : {};
+  const raw = fields.url;
 
   if (typeof raw !== "string") {
     return respond({ error: "A url is required." }, { status: 400 });
   }
+
+  // The page the reader has open (Slice 10). Untrusted markup, like every
+  // fetched page: it only ever reaches the same extractor and sanitiser.
+  if (fields.html !== undefined && typeof fields.html !== "string") {
+    return respond({ error: "html must be a string." }, { status: 400 });
+  }
+  const html = fields.html ? fields.html : null;
 
   let canonical;
   try {
@@ -222,10 +239,18 @@ export async function POST(request: NextRequest) {
   // updated_at is exactly the signal that this row already existed.
   const alreadySaved = item.created_at !== item.updated_at;
 
-  // A ready item queued nothing. Otherwise fetch it now rather than at the
-  // next daily cron. item.user_id is the verified owner: our own RPC wrote it
-  // from auth.uid() or from the token's owner.
-  if (item.status !== "ready") extractSoon(item.id, item.user_id, "api/save");
+  // A ready item queued nothing, and keeps its body even when a page was sent:
+  // re-saving must not become a way to rewrite an article. Otherwise extract
+  // now rather than at the next daily cron, from the sent page when there is
+  // one. item.user_id is the verified owner: our own RPC wrote it from
+  // auth.uid() or from the token's owner.
+  if (item.status !== "ready")
+    extractSoon(
+      item.id,
+      item.user_id,
+      "api/save",
+      html === null ? undefined : { url: raw.trim(), html },
+    );
 
   const body: SaveResponse = {
     item: {

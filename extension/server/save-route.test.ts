@@ -35,6 +35,7 @@ vi.mock("@/lib/db/service", () => ({
 }));
 
 import { POST, OPTIONS } from "../../app/api/save/route";
+import { SAVE_BODY_MAX_BYTES } from "../../lib/save-body";
 import { hashExtensionToken } from "./tokens";
 
 const site = "https://marrow-bice.vercel.app";
@@ -268,7 +269,58 @@ describe("extension save entry point", () => {
     const h = harness();
     h.item.status = "pending";
     expect((await POST(request(h.token))).status).toBe(201);
-    expect(extractSoon).toHaveBeenCalledWith(h.item.id, h.userId, "api/save");
+    expect(extractSoon).toHaveBeenCalledWith(
+      h.item.id,
+      h.userId,
+      "api/save",
+      undefined,
+    );
+  });
+
+  it("passes the page the reader sent, and still claims by owner", async () => {
+    const h = harness();
+    h.item.status = "pending";
+    const html = "<html><body><p>Seen in the browser.</p></body></html>";
+    const response = await POST(
+      request(h.token, { url: "https://example.com/post", html }),
+    );
+    expect(response.status).toBe(201);
+    expect(extractSoon).toHaveBeenCalledWith(h.item.id, h.userId, "api/save", {
+      url: "https://example.com/post",
+      html,
+    });
+  });
+
+  it("never lets a sent page replace a ready item's body", async () => {
+    const h = harness();
+    h.state.duplicate = true;
+    const response = await POST(
+      request(h.token, { url: "https://example.com/post", html: "<p>new</p>" }),
+    );
+    expect(response.status).toBe(200);
+    expect(extractSoon).not.toHaveBeenCalled();
+  });
+
+  it("refuses a body over the cap with 413 and saves nothing", async () => {
+    const h = harness();
+    const response = await POST(
+      request(h.token, {
+        url: "https://example.com/post",
+        html: "x".repeat(SAVE_BODY_MAX_BYTES),
+      }),
+    );
+    expect(response.status).toBe(413);
+    expect(h.requests.some((r) => r.url.pathname.includes("/rpc/"))).toBe(
+      false,
+    );
+  });
+
+  it("rejects an html field that is not a string", async () => {
+    const h = harness();
+    const response = await POST(
+      request(h.token, { url: "https://example.com/post", html: 42 }),
+    );
+    expect(response.status).toBe(400);
   });
 
   it("schedules no fetch for a ready re-save", async () => {
