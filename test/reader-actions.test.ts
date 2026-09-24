@@ -44,6 +44,8 @@ vi.mock("@/lib/db/server", () => ({
   },
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+const extractSoon = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/extract-now", () => ({ extractSoon }));
 import {
   saveReaderSettings,
   saveReadingProgress,
@@ -138,6 +140,8 @@ describe("authenticated reader persistence, with an offline database fixture", (
       { data: null, error: null },
     );
     await expect(retryReadingItem(id)).resolves.toBe("queued");
+    expect(extractSoon).toHaveBeenCalledWith(id, "reader-user", "read/retry");
+    extractSoon.mockClear();
     expect(state.calls).toContainEqual({
       method: "rpc",
       args: ["retry_item", { p_item_id: id }],
@@ -148,6 +152,7 @@ describe("authenticated reader persistence, with an offline database fixture", (
       { data: null, error: { code: "PT429", message: "limit" } },
     );
     await expect(retryReadingItem(id)).resolves.toBe("limited");
+    expect(extractSoon).not.toHaveBeenCalled();
     state.calls = [];
     state.responses.push({
       data: { ...item, fail_reason: "not_found" },

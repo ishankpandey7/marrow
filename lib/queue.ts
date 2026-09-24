@@ -172,6 +172,31 @@ export async function claimJobs(
   return (data ?? []) as ClaimedJob[];
 }
 
+/**
+ * Claim the one queued job for this item of this owner, or nothing.
+ *
+ * Fetch on save (Slice 9) uses this instead of claimJobs, which takes the
+ * oldest jobs of any user. Null is the normal answer when the job is already
+ * running elsewhere, has spent its attempts, or was never queued because the
+ * item was ready.
+ */
+export async function claimItemJob(
+  client: SupabaseClient,
+  itemId: string,
+  userId: string,
+): Promise<ClaimedJob | null> {
+  const { data, error } = await client.rpc("claim_fetch_job_for_item", {
+    p_item_id: itemId,
+    p_user_id: userId,
+  });
+
+  if (error) {
+    throw new Error(`Could not claim the job for this item: ${error.message}`);
+  }
+
+  return ((data ?? []) as ClaimedJob[])[0] ?? null;
+}
+
 /** Returns how many stalled rows were requeued or abandoned. */
 export async function reclaimStalledJobs(
   client: SupabaseClient,

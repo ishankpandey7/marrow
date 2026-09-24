@@ -82,7 +82,7 @@ export function ReaderState({
         </h2>
         <p>
           {reason === "pending"
-            ? "We're preparing your article. Come back in a moment, or start reading at the source."
+            ? "We're preparing your article, which usually takes a few seconds. If the site doesn't answer, we try again within a day. You can also start reading at the source."
             : "It may have been removed, or we couldn't load it just now. Your library is a good place to start."}
         </p>
         <div className="reader-state-actions">

@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 
 import { createServiceSupabase } from "@/lib/db/service";
+import { recordJobReport } from "@/lib/extract-now";
 import {
   CLAIM_BATCH_SIZE,
   DRAIN_BUDGET_MS,
@@ -115,7 +116,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  for (const report of reports) record(report);
+  for (const report of reports) recordJobReport(report, "api/cron/extract");
 
   // A serverless function is frozen the moment it returns, and Sentry batches,
   // so an event queued above can be dropped before it is ever sent. Flushing
@@ -146,42 +147,5 @@ export async function GET(request: NextRequest) {
       attempts: r.attempts,
       runAfter: r.runAfter,
     })),
-  });
-}
-
-/**
- * ARCHITECTURE section 11: every extraction failure is logged with its URL and
- * its code. `blocked_url` is raised to warning on purpose — one is a user
- * pasting something odd, and a spike is someone probing the fetcher, which is
- * only visible if the events are countable in the first place.
- *
- * The note travels here and nowhere near a response body. "Blocked: connection
- * refused to 10.0.0.7" is a working port scanner with a nice UI.
- */
-function record(report: JobReport): void {
-  if (report.warning !== null) {
-    Sentry.captureMessage(`cron/extract: ${report.warning}`, {
-      level: "error",
-      tags: { route: "api/cron/extract", outcome: report.outcome },
-      extra: { url: report.url, itemId: report.itemId },
-    });
-  }
-
-  if (report.reason === null) return;
-
-  Sentry.captureMessage(`cron/extract: ${report.reason}`, {
-    level: report.reason === "blocked_url" ? "warning" : "info",
-    tags: {
-      route: "api/cron/extract",
-      failReason: report.reason,
-      outcome: report.outcome,
-    },
-    extra: {
-      url: report.url,
-      itemId: report.itemId,
-      note: report.note,
-      attempts: report.attempts,
-      runAfter: report.runAfter,
-    },
   });
 }

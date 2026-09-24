@@ -5,6 +5,9 @@ import { createServerSupabase } from "@/lib/db/server";
 import { isRecord, readerSettings, type ReaderItem } from "@/lib/reading";
 
 export const dynamic = "force-dynamic";
+// Try again fetches in after() inside its Server Action, which takes the
+// page's ceiling. Same reasoning as /api/save.
+export const maxDuration = 60;
 export const metadata = {
   title: "Reading",
   robots: { index: false, follow: false },

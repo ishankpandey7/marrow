@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createServerSupabase } from "@/lib/db/server";
 import { FAIL_REASON_COPY } from "@/lib/constants";
+import { extractSoon } from "@/lib/extract-now";
 import { SAVE_LIMIT_SQLSTATE } from "@/lib/rate-limit";
 import { isRecord, mergeReaderSettings, readerSettings } from "@/lib/reading";
 import type { Item } from "@/lib/types";
@@ -72,7 +73,7 @@ export async function saveReadingProgress(id: string, progress: number) {
 export type RetryOutcome = "queued" | "limited";
 
 export async function retryReadingItem(id: string): Promise<RetryOutcome> {
-  const { db } = await authenticatedClient();
+  const { db, user } = await authenticatedClient();
   const { data, error } = await db
     .from("items")
     .select("status, fail_reason")
@@ -95,6 +96,8 @@ export async function retryReadingItem(id: string): Promise<RetryOutcome> {
   if (retryError?.code === SAVE_LIMIT_SQLSTATE) return "limited";
   if (retryError)
     throw new Error("Could not retry just now. Your link is still saved.");
+  // retry_item only matched a row owned by auth.uid(), so user.id is the owner.
+  extractSoon(id, user.id, "read/retry");
   revalidatePath(`/read/${id}`);
   return "queued";
 }

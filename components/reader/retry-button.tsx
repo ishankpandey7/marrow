@@ -11,7 +11,7 @@ export function RetryButton({ id, preview }: { id: string; preview: boolean }) {
     try {
       if ((await retryReadingItem(id)) === "limited")
         return `That is ${SAVE_LIMIT} saves in an hour, which is the limit. Your link is still saved; try again later.`;
-      return "Retry queued. Your link is saved.";
+      return "Trying again now. Check again in a few seconds.";
     } catch {
       return "Could not retry just now. Your link is still saved. Try again in a moment.";
     }

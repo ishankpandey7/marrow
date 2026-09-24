@@ -5,6 +5,7 @@ import * as Sentry from "@sentry/nextjs";
 import { InvalidUrlError, canonicalise } from "@/lib/canonical";
 import { createServerSupabase } from "@/lib/db/server";
 import { createServiceSupabase } from "@/lib/db/service";
+import { extractSoon } from "@/lib/extract-now";
 import {
   checkSaveRateLimit,
   SAVE_LIMIT_SQLSTATE,
@@ -26,6 +27,14 @@ import {
 
 // canonicalise() hashes with node:crypto, which the Edge runtime does not have.
 export const runtime = "nodejs";
+
+/**
+ * The fetch after the response (Slice 9) runs inside this invocation's
+ * lifetime. One fetch is at most ten seconds plus extraction; without an
+ * explicit ceiling it would inherit the platform default. A fetch cut off
+ * anyway leaves its row running until the daily run's stale-lock reclaim.
+ */
+export const maxDuration = 60;
 
 export interface SaveResponse {
   item: Pick<Item, "id" | "url" | "title" | "status">;
@@ -212,6 +221,11 @@ export async function POST(request: NextRequest) {
   // updated_at trigger only fires on UPDATE. So created_at drifting from
   // updated_at is exactly the signal that this row already existed.
   const alreadySaved = item.created_at !== item.updated_at;
+
+  // A ready item queued nothing. Otherwise fetch it now rather than at the
+  // next daily cron. item.user_id is the verified owner: our own RPC wrote it
+  // from auth.uid() or from the token's owner.
+  if (item.status !== "ready") extractSoon(item.id, item.user_id, "api/save");
 
   const body: SaveResponse = {
     item: {

@@ -1,8 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   BACKOFF_MINUTES,
   authoriseCronRequest,
+  claimItemJob,
   planSettlement,
 } from "@/lib/queue";
 import type { FailReason } from "@/lib/types";
@@ -165,5 +167,48 @@ describe("planSettlement", () => {
     );
 
     expect(retried).toEqual(["unreachable", "server_error"]);
+  });
+});
+
+describe("claimItemJob", () => {
+  const job = {
+    job_id: 3,
+    item_id: "item-1",
+    user_id: "owner-1",
+    url: "https://example.com/a",
+    url_hash: "a".repeat(64),
+    attempts: 1,
+    max_attempts: 3,
+  };
+  const client = (result: { data: unknown; error: unknown }) => {
+    const rpc = vi.fn().mockResolvedValue(result);
+    return { rpc, client: { rpc } as unknown as SupabaseClient };
+  };
+
+  it("claims by item and owner, never the global queue", async () => {
+    const c = client({ data: [job], error: null });
+    await expect(claimItemJob(c.client, "item-1", "owner-1")).resolves.toEqual(
+      job,
+    );
+    expect(c.rpc).toHaveBeenCalledWith("claim_fetch_job_for_item", {
+      p_item_id: "item-1",
+      p_user_id: "owner-1",
+    });
+  });
+
+  it("returns null when another worker holds it or nothing was queued", async () => {
+    await expect(
+      claimItemJob(client({ data: [], error: null }).client, "i", "u"),
+    ).resolves.toBeNull();
+  });
+
+  it("throws on a database error rather than pretending the queue is empty", async () => {
+    await expect(
+      claimItemJob(
+        client({ data: null, error: { message: "down" } }).client,
+        "i",
+        "u",
+      ),
+    ).rejects.toThrow("down");
   });
 });

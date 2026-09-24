@@ -15,6 +15,10 @@ const factories = vi.hoisted(() => ({
 }));
 vi.mock("server-only", () => ({}));
 vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
+// after() throws outside a request scope; what is scheduled is asserted here
+// and what runs is covered in lib/extract-now.test.ts.
+const extractSoon = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/extract-now", () => ({ extractSoon }));
 vi.mock("@/lib/db/server", () => ({
   createServerSupabase: async () => {
     factories.sessionCalls++;
@@ -61,6 +65,7 @@ function harness() {
   };
   const item = {
     id: randomUUID(),
+    user_id: userId,
     url: "https://example.com/post",
     title: "Saved article",
     status: "ready",
@@ -192,6 +197,7 @@ function request(
 beforeEach(() => {
   factories.sessionCalls = 0;
   factories.serviceCalls = 0;
+  extractSoon.mockClear();
   vi.spyOn(Date, "now").mockReturnValue(now);
 });
 afterEach(() => {
@@ -256,6 +262,20 @@ describe("extension save entry point", () => {
     expect(
       h.requests.filter((r) => r.url.pathname.includes("/rpc/")),
     ).toHaveLength(1);
+  });
+
+  it("fetches a pending save straight away, keyed on the owner the RPC returned", async () => {
+    const h = harness();
+    h.item.status = "pending";
+    expect((await POST(request(h.token))).status).toBe(201);
+    expect(extractSoon).toHaveBeenCalledWith(h.item.id, h.userId, "api/save");
+  });
+
+  it("schedules no fetch for a ready re-save", async () => {
+    const h = harness();
+    h.state.duplicate = true;
+    expect((await POST(request(h.token))).status).toBe(200);
+    expect(extractSoon).not.toHaveBeenCalled();
   });
 
   it("answers 429 when the database limit catches a race the route missed", async () => {
