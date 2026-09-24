@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createServerSupabase } from "@/lib/db/server";
 import { FAIL_REASON_COPY } from "@/lib/constants";
+import { SAVE_LIMIT_SQLSTATE } from "@/lib/rate-limit";
 import { isRecord, mergeReaderSettings, readerSettings } from "@/lib/reading";
 import type { Item } from "@/lib/types";
 
@@ -64,18 +65,21 @@ export async function saveReadingProgress(id: string, progress: number) {
   if (error || !data) throw new Error("Could not sync your reading position.");
 }
 
-export async function retryReadingItem(id: string) {
+/**
+ * Returned rather than thrown: production strips a Server Function's error
+ * message, and "you hit the limit" is an answer the reader has to see.
+ */
+export type RetryOutcome = "queued" | "limited";
+
+export async function retryReadingItem(id: string): Promise<RetryOutcome> {
   const { db } = await authenticatedClient();
   const { data, error } = await db
     .from("items")
-    .select("url, canonical_url, url_hash, status, fail_reason")
+    .select("status, fail_reason")
     .eq("id", id)
     .is("deleted_at", null)
     .single();
-  const item = data as Pick<
-    Item,
-    "url" | "canonical_url" | "url_hash" | "status" | "fail_reason"
-  > | null;
+  const item = data as Pick<Item, "status" | "fail_reason"> | null;
   if (
     error ||
     !item ||
@@ -85,12 +89,12 @@ export async function retryReadingItem(id: string) {
   ) {
     throw new Error("This saved link cannot be retried.");
   }
-  const { error: retryError } = await db.rpc("save_item", {
-    p_url: item.url,
-    p_canonical_url: item.canonical_url,
-    p_url_hash: item.url_hash,
-  });
+  // Not save_item: a re-save brings an archived item back to the inbox, and a
+  // retry must only re-queue the fetch. retry_item also spends the save limit.
+  const { error: retryError } = await db.rpc("retry_item", { p_item_id: id });
+  if (retryError?.code === SAVE_LIMIT_SQLSTATE) return "limited";
   if (retryError)
     throw new Error("Could not retry just now. Your link is still saved.");
   revalidatePath(`/read/${id}`);
+  return "queued";
 }

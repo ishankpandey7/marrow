@@ -4,6 +4,12 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
+import {
+  SAVE_LIMIT,
+  SAVE_LIMIT_SQLSTATE,
+  SAVE_WINDOW_MS,
+} from "@/lib/rate-limit";
+
 /**
  * These tests enforce the schema invariants from ARCHITECTURE.md section 4
  * without needing a database, which means CI catches a violation on the pull
@@ -175,4 +181,31 @@ describe("enum assignments in plpgsql", () => {
       }
     },
   );
+});
+
+describe("the save limit in SQL", () => {
+  // The route's check explains the wait; enforce_save_limit is the one a
+  // direct PostgREST call cannot skip. Two copies of one number drift unless
+  // something fails when they do.
+  const body = /function public\.enforce_save_limit[\s\S]*?\$\$([\s\S]*?)\$\$/.exec(
+    schema,
+  )?.[1];
+
+  it("matches lib/rate-limit.ts", () => {
+    expect(body).toBeDefined();
+    const limit = /\)\s*>=\s*(\d+)\s+then/.exec(body ?? "")?.[1];
+    const hours = /interval '(\d+) hour'/.exec(body ?? "")?.[1];
+    expect(Number(limit)).toBe(SAVE_LIMIT);
+    expect(Number(hours) * 60 * 60 * 1000).toBe(SAVE_WINDOW_MS);
+    expect(body).toContain(`sqlstate '${SAVE_LIMIT_SQLSTATE}'`);
+  });
+
+  it("is spent by every save entry point", () => {
+    for (const fn of ["save_item_impl", "retry_item"]) {
+      const fnBody = new RegExp(
+        `function public\\.${fn}\\([\\s\\S]*?\\$\\$([\\s\\S]*?)\\$\\$`,
+      ).exec(schema)?.[1];
+      expect(fnBody).toContain("perform public.enforce_save_limit(v_user)");
+    }
+  });
 });

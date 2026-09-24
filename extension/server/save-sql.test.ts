@@ -11,6 +11,7 @@ const read = (path: string) =>
 const migration = read("supabase/migrations/0005_extension_tokens.sql");
 const schema = read("docs/SCHEMA.sql");
 const previous = read("supabase/migrations/0002_save_item_enum_cast.sql");
+const limited = read("supabase/migrations/0006_save_limit_in_sql.sql");
 
 function body(sql: string, name: string): string {
   const found = new RegExp(
@@ -35,8 +36,15 @@ describe("approved shared save implementation", () => {
     expect(statements(body(migration, "save_item_impl"))).toBe(
       statements(expected),
     );
+    // 0006 adds exactly one statement: the database copy of the save limit.
+    expect(statements(body(limited, "save_item_impl"))).toBe(
+      statements(body(migration, "save_item_impl")).replace(
+        "end if; insert into public.items",
+        "end if; perform public.enforce_save_limit(v_user); insert into public.items",
+      ),
+    );
     expect(body(schema, "save_item_impl")).toBe(
-      body(migration, "save_item_impl"),
+      body(limited, "save_item_impl"),
     );
   });
 

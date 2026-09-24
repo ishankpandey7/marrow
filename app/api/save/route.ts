@@ -5,7 +5,12 @@ import * as Sentry from "@sentry/nextjs";
 import { InvalidUrlError, canonicalise } from "@/lib/canonical";
 import { createServerSupabase } from "@/lib/db/server";
 import { createServiceSupabase } from "@/lib/db/service";
-import { checkSaveRateLimit, type SaveRateLimitScope } from "@/lib/rate-limit";
+import {
+  checkSaveRateLimit,
+  SAVE_LIMIT_SQLSTATE,
+  type RateLimitDecision,
+  type SaveRateLimitScope,
+} from "@/lib/rate-limit";
 import type { Item } from "@/lib/types";
 import {
   extensionTokenSecret,
@@ -141,22 +146,23 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!rateLimit.allowed) {
-    // 429 with the reason spelled out, not a generic 500. Someone who has just
-    // pasted a reading list needs to know the link is fine and the wait is
-    // short; a 500 tells them to try the same thing again immediately.
-    return respond(
+  // 429 with the reason spelled out, not a generic 500. Someone who has just
+  // pasted a reading list needs to know the link is fine and the wait is
+  // short; a 500 tells them to try the same thing again immediately.
+  const tooMany = (decision: RateLimitDecision) =>
+    respond(
       {
         error:
-          `That is ${rateLimit.limit} saves in an hour, which is the limit. ` +
-          `Try again in ${describeWait(rateLimit.retryAfterSeconds)}.`,
+          `That is ${decision.limit} saves in an hour, which is the limit. ` +
+          `Try again in ${describeWait(decision.retryAfterSeconds)}.`,
       },
       {
         status: 429,
-        headers: { "Retry-After": String(rateLimit.retryAfterSeconds) },
+        headers: { "Retry-After": String(decision.retryAfterSeconds) },
       },
     );
-  }
+
+  if (!rateLimit.allowed) return tooMany(rateLimit);
 
   // The RPC, not a hand-rolled upsert. Re-saving a URL you already have must
   // not error, must not duplicate, and must leave read position, favourites,
@@ -174,6 +180,20 @@ export async function POST(request: NextRequest) {
           p_user_id: scope.userId,
           ...args,
         });
+
+  // The same limit, enforced again inside Postgres (0006). Reaching it here
+  // means a concurrent save took the last slot between our check and the
+  // insert; the window read again gives the honest wait.
+  if (error?.code === SAVE_LIMIT_SQLSTATE) {
+    try {
+      const again = await checkSaveRateLimit(scope);
+      return tooMany(
+        again.allowed ? { ...again, retryAfterSeconds: 1 } : again,
+      );
+    } catch (readError) {
+      Sentry.captureException(readError, { tags: { route: "api/save" } });
+    }
+  }
 
   if (error) {
     Sentry.captureException(error, {

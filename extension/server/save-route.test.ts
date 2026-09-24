@@ -54,6 +54,8 @@ function harness() {
     lookupFails: false,
     countFails: false,
     saveFails: false,
+    // A concurrent save takes the last slot after the route has counted.
+    limitRace: false,
     duplicate: false,
     events: [] as Event[],
   };
@@ -122,6 +124,18 @@ function harness() {
               );
             }
             if (url.pathname.startsWith("/rest/v1/rpc/")) {
+              if (state.limitRace) {
+                state.events.push(
+                  ...Array.from({ length: 60 - state.events.length }, () => ({
+                    user_id: userId,
+                    created_at: new Date(now - 1000).toISOString(),
+                  })),
+                );
+                return Response.json(
+                  { code: "PT429", message: "save rate limit exceeded" },
+                  { status: 429 },
+                );
+              }
               if (state.saveFails)
                 return Response.json(
                   { message: "Unavailable" },
@@ -242,6 +256,15 @@ describe("extension save entry point", () => {
     expect(
       h.requests.filter((r) => r.url.pathname.includes("/rpc/")),
     ).toHaveLength(1);
+  });
+
+  it("answers 429 when the database limit catches a race the route missed", async () => {
+    const h = harness();
+    h.state.limitRace = true;
+    const response = await POST(request(h.token));
+    expect(response.status).toBe(429);
+    expect(Number(response.headers.get("retry-after"))).toBeGreaterThan(0);
+    expect((await response.json()).error).toMatch(/60 saves in an hour/);
   });
 
   it.each([false, true])(

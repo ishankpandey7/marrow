@@ -113,8 +113,9 @@ async function writeMutation(
     if (error || !data) throw new Error("Could not rename that tag.");
     return;
   }
-  // Join-table RLS checks user_id only. Verify the referenced items through
-  // their own RLS before attaching tags, including for forged action payloads.
+  // The composite foreign keys from 0007 already refuse another user's item.
+  // Checking here as well turns that into a readable message, and also refuses
+  // trashed items, which the database would accept.
   let ownedQuery = db.from("items").select("id").in("id", mutation.ids);
   if (mutation.kind !== "restore")
     ownedQuery = ownedQuery.is("deleted_at", null);

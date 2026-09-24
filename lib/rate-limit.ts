@@ -33,6 +33,14 @@ export const SAVE_LIMIT = 60;
 
 export const SAVE_WINDOW_MS = 60 * 60 * 1000;
 
+/**
+ * What public.enforce_save_limit raises (migration 0006). The database holds
+ * the same limit because save_item is callable over PostgREST without passing
+ * through /api/save; the check in this file is the one that can explain the
+ * wait, the one in SQL is the one nobody can skip.
+ */
+export const SAVE_LIMIT_SQLSTATE = "PT429";
+
 export interface RateLimitDecision {
   readonly allowed: boolean;
   readonly limit: number;

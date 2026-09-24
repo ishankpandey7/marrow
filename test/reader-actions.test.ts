@@ -131,30 +131,23 @@ describe("authenticated reader persistence, with an offline database fixture", (
       saveReaderSettings({ theme: "light", family: "serif", size: 20 }),
     ).rejects.toThrow("Could not save");
   });
-  it("retries only transient failures using the saved canonical identity", async () => {
-    const item = {
-      url: "https://publisher.example/story",
-      canonical_url: "https://publisher.example/story",
-      url_hash: "a".repeat(64),
-      status: "failed",
-      fail_reason: "unreachable",
-    };
+  it("retries only transient failures, through retry_item rather than a re-save", async () => {
+    const item = { status: "failed", fail_reason: "unreachable" };
     state.responses.push(
       { data: item, error: null },
       { data: null, error: null },
     );
-    await retryReadingItem(id);
+    await expect(retryReadingItem(id)).resolves.toBe("queued");
     expect(state.calls).toContainEqual({
       method: "rpc",
-      args: [
-        "save_item",
-        {
-          p_url: item.url,
-          p_canonical_url: item.canonical_url,
-          p_url_hash: item.url_hash,
-        },
-      ],
+      args: ["retry_item", { p_item_id: id }],
     });
+    state.calls = [];
+    state.responses.push(
+      { data: item, error: null },
+      { data: null, error: { code: "PT429", message: "limit" } },
+    );
+    await expect(retryReadingItem(id)).resolves.toBe("limited");
     state.calls = [];
     state.responses.push({
       data: { ...item, fail_reason: "not_found" },

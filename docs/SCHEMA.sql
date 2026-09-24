@@ -155,7 +155,12 @@ create table public.items (
   -- Without this, a retry that forgets to clear fail_reason leaves a ready item
   -- permanently displaying an error, and nobody notices for a month.
   constraint items_fail_reason_matches_status
-    check ((status = 'failed') = (fail_reason is not null))
+    check ((status = 'failed') = (fail_reason is not null)),
+
+  -- Redundant as a uniqueness rule (id is the key) and there for the foreign
+  -- keys: child tables reference (id, user_id) so a row can only point at its
+  -- own owner's item. See item_tags and highlights, and 0007.
+  constraint items_id_user_id_key unique (id, user_id)
 );
 
 create trigger items_touch_updated_at
@@ -249,15 +254,23 @@ create table public.tags (
   -- differ only in case are one tag.
   slug       text not null check (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
   created_at timestamptz not null default now(),
-  unique (user_id, slug)
+  unique (user_id, slug),
+  constraint tags_id_user_id_key unique (id, user_id)
 );
 
+-- The RLS policies pin user_id to auth.uid(); the composite foreign keys then
+-- make that same user own the item and the tag. A plain FK would only check
+-- that they exist, and FK checks ignore RLS. Fixed in 0007.
 create table public.item_tags (
-  item_id    uuid not null references public.items (id) on delete cascade,
-  tag_id     uuid not null references public.tags (id) on delete cascade,
+  item_id    uuid not null,
+  tag_id     uuid not null,
   user_id    uuid not null references public.profiles (id) on delete cascade,
   created_at timestamptz not null default now(),
-  primary key (item_id, tag_id)
+  primary key (item_id, tag_id),
+  constraint item_tags_item_owner_fkey foreign key (item_id, user_id)
+    references public.items (id, user_id) on delete cascade,
+  constraint item_tags_tag_owner_fkey foreign key (tag_id, user_id)
+    references public.tags (id, user_id) on delete cascade
 );
 
 -- "Show me everything tagged X", the reverse of the primary key.
@@ -270,7 +283,8 @@ create index item_tags_user_idx on public.item_tags (user_id);
 
 create table public.highlights (
   id           uuid primary key default gen_random_uuid(),
-  item_id      uuid not null references public.items (id) on delete cascade,
+  -- Owner-checked through the composite FK below, as on item_tags (0007).
+  item_id      uuid not null,
   user_id      uuid not null references public.profiles (id) on delete cascade,
   -- The highlighted text itself, stored verbatim. Offsets alone are not enough:
   -- a re-extraction can shift them, and a highlight that silently points at the
@@ -280,7 +294,9 @@ create table public.highlights (
   start_offset integer not null check (start_offset >= 0),
   end_offset   integer not null,
   created_at   timestamptz not null default now(),
-  check (end_offset > start_offset)
+  check (end_offset > start_offset),
+  constraint highlights_item_owner_fkey foreign key (item_id, user_id)
+    references public.items (id, user_id) on delete cascade
 );
 
 create index highlights_item_idx on public.highlights (item_id, start_offset);
@@ -494,7 +510,42 @@ create policy save_events_select_own on public.save_events
 -- accepts a user id only behind a service-role-only EXECUTE grant: exposing
 -- that argument to authenticated or anonymous callers would be a hole.
 -- The save API derives the service-role argument from a verified token's owner.
+--
+-- Both doors, and retry_item, spend the save limit through enforce_save_limit
+-- (0006). /api/save checks the same limit first so it can say how long to
+-- wait; this copy exists because save_item is reachable over PostgREST
+-- without passing through that route.
 -- ============================================================================
+
+create or replace function public.enforce_save_limit(p_user_id uuid)
+returns void
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  -- Serialise this user's saves so count-then-insert cannot be raced by two
+  -- requests that both see 59. Transaction-scoped: released at commit.
+  perform pg_advisory_xact_lock(
+    hashtext('public.save_events'), hashtext(p_user_id::text)
+  );
+
+  -- Keep in step with SAVE_LIMIT and SAVE_WINDOW_MS in lib/rate-limit.ts;
+  -- test/schema.test.ts fails if they drift apart.
+  if (
+    select count(*)
+    from public.save_events
+    where user_id = p_user_id
+      and created_at > now() - interval '1 hour'
+  ) >= 60 then
+    -- PT429 makes PostgREST answer a direct RPC call with HTTP 429.
+    raise sqlstate 'PT429' using message = 'save rate limit exceeded';
+  end if;
+end;
+$$;
+
+-- Callable only from the definer functions below, which run as its owner.
+revoke all on function public.enforce_save_limit(uuid)
+  from public, anon, authenticated, service_role;
 
 create or replace function public.save_item_impl(
   p_user_id       uuid,
@@ -515,6 +566,8 @@ begin
     raise exception 'not authenticated' using errcode = '42501';
   end if;
 
+  perform public.enforce_save_limit(v_user);
+
   insert into public.items (user_id, url, canonical_url, url_hash)
   values (v_user, p_url, p_canonical_url, p_url_hash)
   on conflict (user_id, url_hash) do update
@@ -529,11 +582,7 @@ begin
       -- Re-queue extraction only if we never got the content. A ready item
       -- keeps its body, its excerpt and its read position. Deliberately NOT
       -- touching read_progress, read_at, favourite, or any tag.
-      -- Casts are load-bearing. Without them both branches are unknown-type
-      -- literals, the CASE resolves to text, and assigning text to an enum
-      -- column fails at runtime with 42804 — but only on a conflict, because a
-      -- first save takes the INSERT path and never evaluates this. Fixed in
-      -- 0002_save_item_enum_cast.sql.
+      -- Casts are load-bearing; see 0002_save_item_enum_cast.sql.
       status      = case
                       when items.status = 'ready' then 'ready'::public.item_status
                       else 'pending'::public.item_status
@@ -544,9 +593,6 @@ begin
                     end
   returning * into v_item;
 
-  -- Queue a fetch unless the content is already here, or a job is already open
-  -- for this item. The partial unique index makes the second condition safe
-  -- under concurrency; do nothing swallows the collision.
   if v_item.status <> 'ready' then
     insert into public.fetch_jobs (item_id, user_id)
     values (v_item.id, v_user)
@@ -586,6 +632,53 @@ $$;
 revoke all on function public.save_item(text, text, text) from public;
 grant execute on function public.save_item(text, text, text) to authenticated;
 
+-- The reader's Try again. Not save_item: a re-save brings an archived item
+-- back to the inbox, and a retry must only re-queue the fetch. Added in 0006.
+create or replace function public.retry_item(p_item_id uuid)
+returns public.items
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_user uuid := (select auth.uid());
+  v_item public.items;
+begin
+  if v_user is null then
+    raise exception 'not authenticated' using errcode = '42501';
+  end if;
+
+  perform public.enforce_save_limit(v_user);
+
+  -- Only fetch state moves. Archive, favourite, tags and reading position stay
+  -- where the reader left them: pressing Try again is not re-saving.
+  update public.items
+     set status      = 'pending'::public.item_status,
+         fail_reason = null::public.fail_reason
+   where id = p_item_id
+     and user_id = v_user
+     and deleted_at is null
+     and status = 'failed'::public.item_status
+  returning * into v_item;
+
+  if not found then
+    raise exception 'item cannot be retried' using errcode = 'P0002';
+  end if;
+
+  insert into public.fetch_jobs (item_id, user_id)
+  values (v_item.id, v_user)
+  on conflict do nothing;
+
+  -- A retry is a server-side fetch like any save, so it spends the same limit.
+  insert into public.save_events (user_id) values (v_user);
+
+  return v_item;
+end;
+$$;
+
+revoke all on function public.retry_item(uuid) from public, anon, service_role;
+grant execute on function public.retry_item(uuid) to authenticated;
+
 -- ============================================================================
 -- The extraction queue's machinery — added in 0003_jobs.sql
 --
@@ -620,8 +713,8 @@ create type public.claimed_fetch_job as (
 -- claim_fetch_jobs — the whole design, in one statement.
 --
 -- FOR UPDATE SKIP LOCKED is the reason this is safe under overlapping
--- invocations. Vercel Cron fires every minute and a fetch is allowed ten
--- seconds, so two runs overlapping is the normal case, not the edge case.
+-- invocations. A scheduled run can overlap a manual one, and any schedule
+-- tighter than Hobby's daily one makes overlap the normal case, not the edge.
 -- Without SKIP LOCKED the second run blocks on the first run's rows and then
 -- processes them anyway the moment the lock clears: the same URL fetched
 -- twice, two writes racing on one item. With it, the second run simply sees
