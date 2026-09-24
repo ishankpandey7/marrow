@@ -555,7 +555,10 @@ optional. There is **no** fallback to a placeholder value anywhere.
 
 Extraction happens out of band. `POST /api/save` writes a `pending` item and
 returns immediately; the user sees the row appear at once. Nobody waits ten
-seconds for a page fetch to finish.
+seconds for a page fetch to finish. The fetch then runs in the same
+invocation, after the response has gone (`after()`, Slice 9), so the article
+is usually readable within seconds. The queue below is the backstop, not the
+first attempt.
 
 - `fetch_jobs` is the queue. A row per attempt-cycle, with `state`, `attempts`,
   `run_after` and `last_error`.
@@ -580,10 +583,12 @@ seconds for a page fetch to finish.
   daily; a deployment carrying `* * * * *` fails outright. So `vercel.json`
   says `9 2 * * *` for extract and `17 4 * * *` for purge, both UTC, and Hobby
   additionally fires them within a one-hour window of that time rather than on
-  the minute. The practical cost is that a saved link can wait a day for its
-  article. The remedy is a plan or an external scheduler, not a code change:
-  the drain loop above is what makes a daily run tolerable meanwhile, and
-  ROADMAP.md carries this as a launch decision for Slice 8.
+  the minute. Since Slice 9 this no longer delays a save: `lib/extract-now.ts`
+  claims that one item's job with `claim_fetch_job_for_item` (0008) and runs
+  it in `after()`, both from `/api/save` and from the reader's Try again.
+  What still waits for the daily run is everything after a first attempt that
+  failed transiently, and any fetch the platform cut off. Those remain a
+  launch decision in Slice 8.
 - A `running` row whose `locked_at` has not moved for five minutes is a crashed
   worker. It goes back to the queue, or — if it stalled on its last attempt —
   the job is closed **and its item is resolved with it**, because a tidy job
@@ -755,3 +760,13 @@ re-litigate. Date, decision, reason.
   turned a ready item into a failed one while its stored copy still existed.
   The queue (`lib/queue.ts`) is now the only writer of extraction results. The
   2026-09-10 entry above describes the state before this.
+- **2026-09-24 — Fetch on save, in `after()` (Slice 9).** This reverses the
+  "not a code change" line in section 10, with Ishank's agreement. A save
+  claims only its own job, through a service-role function keyed on item and
+  owner, because `claim_fetch_jobs` would take strangers' oldest jobs. Both
+  claims use SKIP LOCKED, so the cron, a second tap and the extension's
+  offline replay cannot fetch the same URL twice. The callback builds a
+  service-role client, because the route's session client cannot write
+  `item_content`. The save route and the reader page set `maxDuration = 60`.
+  A fetch cut off by the platform stays `running` until the daily run's
+  stale-lock reclaim takes it.

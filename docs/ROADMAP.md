@@ -20,7 +20,24 @@ not check is worse than an unticked one, because next session it gets skipped.
 
 Kept current at the end of every session. Read this first; it is the handoff.
 
-**Last updated: 2026-09-24 — earlier-slice bug pass done; next is the feature list below.**
+**Last updated: 2026-09-24 — Slice 9 (fetch on save) built and deployed; two hand checks open.**
+
+- **Slice 9 is implemented, migration 0008 is applied and verified, and the
+  code is pushed.** Two boxes stay open: that an article is readable seconds
+  after saving, and Ishank's hand check. Both need a signed-in session or
+  the extension token. Typecheck, lint, **635 tests** and `next build` pass.
+- **What Ishank must check by hand (about 3 minutes):**
+  1. Save a new article URL from /inbox, wait about 15 s, and open it. The
+     article is there, not "Making room for the words".
+  2. Do the same with the extension toolbar button.
+  3. Reload /inbox. Both rows show a reading time. The list does not
+     auto-refresh until Slice 8, so reload it.
+- **The earlier-slice bug pass below was hand-checked by Ishank on
+  2026-09-24:** save, tag/untag, and Try again on an archived failed item all
+  behaved.
+- **Next:** Slice 10, highlights + notes. Write it into this file first.
+
+_Earlier on 2026-09-24:_
 
 - **Four earlier-slice bugs are fixed** (`fa8dea9`, `1d78275`, `c6eab02`),
   found by a read-only review on 2026-09-23 and re-verified before fixing:
@@ -782,6 +799,65 @@ budget real time for this and test on the deployed site, not just locally —
 Second: "account deletion" that leaves rows in `item_content` because the
 cascade was never tested is the kind of thing that turns into a compliance
 problem. Delete an account and then query every table for its `user_id`.
+
+---
+
+## Slice 9 — fetch on save
+
+**Agent:** Claude Code. Needs the real database and a deploy.
+**Files:** `app/api/save/route.ts`, `components/reader/actions.ts`,
+`components/reader/reader-state.tsx`, `lib/queue.ts`, `lib/extract-now.ts`
+(new), `app/api/cron/extract/route.ts` (shares the failure reporter),
+`supabase/migrations/0008_claim_item_job.sql`
+
+Numbered 9 because it was written after 8, not because it waits for it. Slices
+9–16 are the feature list agreed on 2026-09-24 (see Where things stand).
+
+### Done when
+
+- [ ] A link saved from `/inbox` or the extension becomes readable within
+      seconds, without waiting for the daily cron. `/api/save` answers first
+      and fetches in `after()`.
+- [x] Only the job that save queued is claimed, through
+      `claim_fetch_job_for_item(item, owner)`: service-role only,
+      `for update skip locked`, and attempts counted exactly as in
+      `claim_fetch_jobs`. Zero rows (a job already running, or a ready re-save
+      that queued nothing) means nothing happens.
+      Verified live in a rolled-back block: wrong owner claims 0, owner claims 1 with attempts 1, a second claim gets 0, and only service_role can execute it.
+- [x] A ready re-save schedules no work.
+      Route test.
+- [x] Try again in the reader fetches immediately as well, after `retry_item`
+      has spent the limit.
+      Action test: scheduled after `queued`, not after `limited`.
+- [x] A fetch cut off by the platform is no worse than today: the row stays
+      `running` and the daily run's stale-lock reclaim picks it up.
+      `maxDuration` is set on the save route.
+      By construction: the claim sets `running`/`locked_at` exactly as the cron does, and the reclaim path was verified live in Slice 7.
+- [x] Failures go through the same reporter as the cron. Server-side Sentry is
+      still dead, so the check is the `items`/`fetch_jobs` rows.
+      `lib/extract-now.test.ts`; the cron route now imports the same `recordJobReport`.
+- [x] The pending copy is honest: usually ready in seconds, and a site that
+      does not answer is retried by the daily run.
+- [x] Tests cover: the route schedules only for a non-ready item, the job is
+      claimed for the right item and owner, and nothing runs when the claim is
+      empty. `after()` is mocked; it throws outside a request scope.
+- [x] ARCHITECTURE section 10 and the decision log say this, replacing "the
+      remedy is a plan or an external scheduler, not a code change".
+- [ ] Hand check by Ishank: save from `/inbox` and from the extension, open
+      each about 15 s later, and the article is there.
+
+### Gotcha
+
+Claim before you fetch, and claim *this item's* job. `claim_fetch_jobs(n)`
+takes the oldest jobs of any user, so reusing it inside one user's request
+would fetch strangers' links on their time. Fetching without claiming at all
+lets the cron, a double tap or the extension's offline replay fetch the same
+URL twice, and skips the attempt count that ends retries.
+
+Second: the `after()` callback must build a service-role client. The session
+client in the route is RLS-scoped, and `item_content` and `fetch_jobs` accept
+writes from the service role only. It fails silently, because Sentry is dead
+and the response has already gone.
 
 ---
 
