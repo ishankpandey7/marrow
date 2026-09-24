@@ -889,7 +889,7 @@ returns setof public.claimed_fetch_job
 language sql
 volatile
 set search_path = public, pg_temp
-as $
+as $$
   with claimed as (
     update public.fetch_jobs j
        set state     = 'running'::public.job_state,
@@ -913,7 +913,7 @@ as $
   select c.id, c.item_id, c.user_id, i.url, i.url_hash, c.attempts, c.max_attempts
     from claimed c
     join public.items i on i.id = c.item_id;
-$;
+$$;
 
 revoke all on function public.claim_fetch_job_for_item(uuid, uuid)
   from public, anon, authenticated;

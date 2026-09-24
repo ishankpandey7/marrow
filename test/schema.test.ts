@@ -209,3 +209,18 @@ describe("the save limit in SQL", () => {
     }
   });
 });
+
+describe("dollar quoting in docs/SCHEMA.sql", () => {
+  // SETUP.md builds a fresh project by pasting this whole file, and one bad
+  // quote makes Postgres reject all of it. A single `$` once slipped in when
+  // a script used String.replace, whose replacement string treats `$$` as `$`.
+  it("opens and closes every function body with $$", () => {
+    const lines = schema.split("\n");
+    expect(lines.filter((l) => /^as \$$/.test(l) || /^\$;$/.test(l))).toEqual(
+      [],
+    );
+    const opens = lines.filter((l) => /\bas \$\$$/.test(l)).length;
+    const closes = lines.filter((l) => /^\$\$;$/.test(l)).length;
+    expect(opens).toBe(closes);
+  });
+});
