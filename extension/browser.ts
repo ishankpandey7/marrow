@@ -34,6 +34,12 @@ export interface ExtensionApi {
     onAlarm: ExtensionEvent<(alarm: { name: string }) => void>;
   };
   tabs: { query(query: { active: true; currentWindow: true }): Promise<Tab[]> };
+  scripting: {
+    executeScript(injection: {
+      target: { tabId: number };
+      func: () => string;
+    }): Promise<{ result?: unknown }[]>;
+  };
   contextMenus: {
     removeAll(): Promise<void>;
     create(details: {
@@ -73,6 +79,31 @@ export function extensionApi(): ExtensionApi {
   const api = environment.browser ?? environment.chrome;
   if (!api) throw new Error("Open this page through the installed extension.");
   return api;
+}
+
+/**
+ * The open tab's markup, read at the moment of the click (Slice 10).
+ *
+ * Publishers that refuse our server (Akamai, Cloudflare bot rules) have
+ * already served this page to the reader, so sending it is how those saves
+ * work at all. activeTab grants this tab only, only for this gesture. Null
+ * when the browser forbids it — Web Store, browser pages, the PDF viewer —
+ * and the save then goes ahead as a link.
+ */
+export async function capturePage(
+  api: ExtensionApi,
+  tabId: number | undefined,
+): Promise<string | undefined> {
+  if (tabId === undefined) return undefined;
+  try {
+    const [frame] = await api.scripting.executeScript({
+      target: { tabId },
+      func: () => document.documentElement.outerHTML,
+    });
+    return typeof frame?.result === "string" ? frame.result : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function showFeedback(

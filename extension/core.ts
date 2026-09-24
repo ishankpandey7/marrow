@@ -1,3 +1,5 @@
+import { SAVE_BODY_MAX_BYTES } from "./config.js";
+
 export type SaveStatus =
   "idle" | "saving" | "saved" | "already" | "queued" | "error" | "auth";
 
@@ -109,6 +111,23 @@ function validUrl(value: string | undefined): value is string {
   }
 }
 
+/**
+ * The page travels with the first attempt only (Slice 10). It is never put in
+ * the durable queue: storage.local holds about 10 MB in all, and a queue of
+ * pages would fill it and then fail every write after it, the token included.
+ * A replay therefore sends the link, and the server fetches it.
+ *
+ * Too big for the server's cap means the page is dropped, never the save.
+ */
+function saveBody(url: string, html: string | undefined): string {
+  if (html) {
+    const withPage = JSON.stringify({ url, html });
+    if (new TextEncoder().encode(withPage).byteLength <= SAVE_BODY_MAX_BYTES)
+      return withPage;
+  }
+  return JSON.stringify({ url });
+}
+
 function retryDelay(response: Response, now: number): number {
   const header = response.headers.get("Retry-After");
   if (header) {
@@ -146,7 +165,7 @@ export function createSaveController(deps: Dependencies) {
     };
   }
 
-  async function attempt(state: SaveState, job: QueuedSave) {
+  async function attempt(state: SaveState, job: QueuedSave, html?: string) {
     if (!state.token) return;
     job.attempts += 1;
     // Persist before sending. A worker may disappear after the server commits;
@@ -161,7 +180,7 @@ export function createSaveController(deps: Dependencies) {
           Authorization: `Bearer ${state.token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ url: job.url }),
+        body: saveBody(job.url, html),
         credentials: "omit",
         redirect: "error",
         referrerPolicy: "no-referrer",
@@ -286,7 +305,7 @@ export function createSaveController(deps: Dependencies) {
         await deps.schedule();
         return publicState(state);
       }),
-    save: (url: string | undefined) =>
+    save: (url: string | undefined, html?: string) =>
       serial(async () => {
         const state = decode(await deps.read());
         if (!state.token) {
@@ -329,7 +348,7 @@ export function createSaveController(deps: Dependencies) {
         state.queue.push(job);
         await deps.write(state);
         await deps.schedule();
-        await attempt(state, job);
+        await attempt(state, job, html);
         return publicState(state);
       }),
     resume: () =>

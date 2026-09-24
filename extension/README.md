@@ -71,13 +71,15 @@ first. A token is save-only; ordinary web-app sign-in remains separate.
 
 1. **MV3 and permissions:** load the build as above and check the extension
    card for load errors. Inspect its generated `manifest.json`: version 3,
-   only the four permissions listed below, and exactly one API host. Chrome
+   only the five permissions listed below, and exactly one API host. Chrome
    uses `background.service_worker`; Firefox uses `background.scripts`.
 2. **One-click save and visible success:** visit a public article that is not
    saved yet. Click the pinned toolbar icon once. No popup opens; the badge
    changes from `…` to green **OK**. Hover for **Saved to your inbox.** Refresh
-   the web app's inbox and verify one row. “Fetching the article” is expected:
-   extraction is on the existing daily cron and the list does not auto-refresh.
+   the web app's inbox and verify one row. The open page travels with the
+   save, so the article is usually readable within seconds; the list does not
+   auto-refresh, so reload it. Repeat on a site that refuses servers (an NDTV
+   or openai.com article): it must be readable too.
 3. **Visible failure:** open `chrome://settings` or `about:config` and click
    the icon. It displays red **!** with an explanation on hover; no item is
    added. A server refusal also displays **!** without opening options.
@@ -145,12 +147,13 @@ unit suite does not claim these live checks have been performed.
 | Permission     | Why it is required                                                          |
 | -------------- | --------------------------------------------------------------------------- |
 | `activeTab`    | Read the current tab's URL only when the user invokes Save.                 |
+| `scripting`    | Read the open page's HTML at that same click, so sites that refuse servers still save. |
 | API origin     | Send the chosen URL and save-only token to the user's own save API.         |
 | `storage`      | Keep the pasted token and pending offline saves in extension local storage. |
 | `contextMenus` | Add the requested Save link command when the user right-clicks a link.      |
 | `alarms`       | Wake a suspended background worker to retry durable offline saves.          |
 
-There is no `<all_urls>`, `tabs`, `scripting`, `cookies`, `webRequest`,
+There is no `<all_urls>`, `tabs`, `cookies`, `webRequest`,
 notifications, content script or remote code permission. `chrome.storage.local`
 is limited to trusted extension contexts where Chrome supports that control;
 Firefox uses its equivalent `browser.storage.local` API. Data stays local until

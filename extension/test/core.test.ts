@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
+import { SAVE_BODY_MAX_BYTES } from "../config";
 import { createSaveController, type Feedback, type SaveState } from "../core";
 
 function newToken() {
@@ -159,6 +160,44 @@ describe("save-only extension background", () => {
     expect((await restarted.resume()).feedback.status).toBe("saved");
     expect(fixture.request).toHaveBeenCalledTimes(2);
     expect(fixture.stored()?.queue).toEqual([]);
+  });
+
+  it("sends the open page with the first attempt and never stores it", async () => {
+    const fixture = setup();
+    await fixture.controller.configure(newToken());
+    const html =
+      "<html><body><p>The article the reader can see.</p></body></html>";
+    fixture.request.mockImplementationOnce(async () => {
+      expect(JSON.stringify(fixture.stored())).not.toContain(
+        "the reader can see",
+      );
+      throw new TypeError("Offline");
+    });
+    await fixture.controller.save("https://example.com/article", html);
+    expect(JSON.parse(String(fixture.request.mock.calls[0][1]?.body))).toEqual({
+      url: "https://example.com/article",
+      html,
+    });
+    // The replay is a link: the page was never persisted, so the server fetches.
+    fixture.advance(60_000);
+    await fixture.controller.resume();
+    expect(JSON.parse(String(fixture.request.mock.calls[1][1]?.body))).toEqual({
+      url: "https://example.com/article",
+    });
+  });
+
+  it("drops a page too big for the server, never the save", async () => {
+    const fixture = setup();
+    await fixture.controller.configure(newToken());
+    const html = "x".repeat(SAVE_BODY_MAX_BYTES);
+    const result = await fixture.controller.save(
+      "https://example.com/big",
+      html,
+    );
+    expect(JSON.parse(String(fixture.request.mock.calls[0][1]?.body))).toEqual({
+      url: "https://example.com/big",
+    });
+    expect(result.feedback.status).toBe("saved");
   });
 
   it("does not enqueue repeated offline clicks on the exact same URL", async () => {

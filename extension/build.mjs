@@ -29,6 +29,33 @@ for (const statement of parsed.statements) {
 }
 if (!productName)
   throw new Error("APP_NAME must be a string literal in lib/constants.ts.");
+
+// The save body cap is shared with the API (lib/save-body.ts). Each file below
+// is transpiled on its own, so a shared value is inlined into product.js
+// rather than imported from outside the package.
+const saveBody = ts.createSourceFile(
+  "save-body.ts",
+  await readFile(path.join(directory, "../lib/save-body.ts"), "utf8"),
+  ts.ScriptTarget.Latest,
+  true,
+);
+let saveBodyMaxBytes;
+for (const statement of saveBody.statements) {
+  if (ts.isVariableStatement(statement)) {
+    for (const declaration of statement.declarationList.declarations) {
+      if (
+        declaration.name.getText(saveBody) === "SAVE_BODY_MAX_BYTES" &&
+        declaration.initializer &&
+        ts.isNumericLiteral(declaration.initializer)
+      )
+        saveBodyMaxBytes = Number(declaration.initializer.text);
+    }
+  }
+}
+if (!Number.isSafeInteger(saveBodyMaxBytes))
+  throw new Error(
+    "SAVE_BODY_MAX_BYTES must be a numeric literal in lib/save-body.ts.",
+  );
 const manifest = JSON.parse(
   await readFile(path.join(directory, "manifest.json"), "utf8"),
 );
@@ -74,15 +101,27 @@ for (const browser of ["chrome", "firefox"]) {
       },
       fileName: filename,
     });
-    const code = compiled.outputText.replace(
-      '"../lib/constants"',
-      '"./product.js"',
-    );
+    const code = compiled.outputText
+      .replace('"../lib/constants"', '"./product.js"')
+      .replace('"../lib/save-body"', '"./product.js"');
+    // Nothing outside dist/<browser> exists once the extension is loaded; an
+    // import that escapes it stops the background worker from starting.
+    for (const [, specifier] of code.matchAll(/from\s+["'](\.[^"']*)["']/g)) {
+      const target = path.resolve(
+        path.dirname(path.join(output, filename)),
+        specifier,
+      );
+      if (!target.startsWith(output + path.sep))
+        throw new Error(
+          `${filename} imports ${specifier}, outside the extension.`,
+        );
+    }
     await writeFile(path.join(output, filename.replace(/\.ts$/, ".js")), code);
   }
   await writeFile(
     path.join(output, "product.js"),
-    `export const APP_NAME = ${JSON.stringify(productName)};\n`,
+    `export const APP_NAME = ${JSON.stringify(productName)};\n` +
+      `export const SAVE_BODY_MAX_BYTES = ${saveBodyMaxBytes};\n`,
   );
   for (const filename of ["popup/index.html", "popup/options.css"])
     await copyFile(path.join(directory, filename), path.join(output, filename));
@@ -102,7 +141,12 @@ for (const browser of ["chrome", "firefox"]) {
               id: "marrow-save@marrow-bice.vercel.app",
               strict_min_version: "140.0",
               data_collection_permissions: {
-                required: ["authenticationInfo", "browsingActivity"],
+                // websiteContent: a toolbar save sends the open page (Slice 10).
+                required: [
+                  "authenticationInfo",
+                  "browsingActivity",
+                  "websiteContent",
+                ],
               },
             },
           },

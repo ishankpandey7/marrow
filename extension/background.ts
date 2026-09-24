@@ -1,4 +1,9 @@
-import { extensionApi, showFeedback } from "./browser.js";
+import {
+  capturePage,
+  extensionApi,
+  showFeedback,
+  type Tab,
+} from "./browser.js";
 import { APP_NAME, API_ORIGIN, RETRY_ALARM, STORAGE_KEY } from "./config.js";
 import { createSaveController } from "./core.js";
 
@@ -41,7 +46,13 @@ async function installMenu() {
   });
 }
 
-api.action.onClicked.addListener((tab) => run(controller.save(tab.url)));
+// The open page goes with the save; a link from the context menu was never
+// opened, so it is saved as a link and fetched by the server.
+async function saveTab(tab: Tab | undefined) {
+  return controller.save(tab?.url, await capturePage(api, tab?.id));
+}
+
+api.action.onClicked.addListener((tab) => run(saveTab(tab)));
 api.contextMenus.onClicked.addListener((info) => {
   if (info.menuItemId === "save-link") run(controller.save(info.linkUrl));
 });
@@ -50,7 +61,7 @@ api.commands.onCommand.addListener((command) => {
     run(
       api.tabs
         .query({ active: true, currentWindow: true })
-        .then(([tab]) => controller.save(tab?.url)),
+        .then(([tab]) => saveTab(tab)),
     );
   }
 });

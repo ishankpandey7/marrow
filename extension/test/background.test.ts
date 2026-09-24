@@ -25,7 +25,7 @@ function event<T extends (...args: never[]) => unknown>() {
 function browserFixture() {
   return {
     action: {
-      onClicked: event<(tab: { url?: string }) => void>(),
+      onClicked: event<(tab: { id?: number; url?: string }) => void>(),
       setBadgeText: vi.fn().mockResolvedValue(undefined),
       setBadgeBackgroundColor: vi.fn().mockResolvedValue(undefined),
       setTitle: vi.fn().mockResolvedValue(undefined),
@@ -43,7 +43,14 @@ function browserFixture() {
       onAlarm: event<(alarm: { name: string }) => void>(),
     },
     tabs: {
-      query: vi.fn().mockResolvedValue([{ url: "https://example.com/active" }]),
+      query: vi
+        .fn()
+        .mockResolvedValue([{ id: 7, url: "https://example.com/active" }]),
+    },
+    scripting: {
+      executeScript: vi
+        .fn()
+        .mockResolvedValue([{ result: "<html><body>page</body></html>" }]),
     },
     contextMenus: {
       removeAll: vi.fn().mockResolvedValue(undefined),
@@ -87,12 +94,39 @@ describe("browser event wiring", () => {
     "handles a toolbar click in the %s namespace without opening a popup",
     async (namespace) => {
       const api = await load(namespace);
-      api.action.onClicked.listeners[0]({ url: "https://example.com/current" });
-      expect(controller.save).toHaveBeenCalledWith(
-        "https://example.com/current",
+      api.action.onClicked.listeners[0]({
+        id: 3,
+        url: "https://example.com/current",
+      });
+      await vi.waitFor(() =>
+        expect(controller.save).toHaveBeenCalledWith(
+          "https://example.com/current",
+          "<html><body>page</body></html>",
+        ),
+      );
+      // The clicked tab only; activeTab grants nothing wider.
+      expect(api.scripting.executeScript).toHaveBeenCalledWith(
+        expect.objectContaining({ target: { tabId: 3 } }),
       );
     },
   );
+
+  it("still saves the link when the browser will not let it read the page", async () => {
+    const api = await load();
+    api.scripting.executeScript.mockRejectedValue(
+      new Error("Cannot access a chrome:// URL"),
+    );
+    api.action.onClicked.listeners[0]({
+      id: 4,
+      url: "https://chromewebstore.google.com/detail/x",
+    });
+    await vi.waitFor(() =>
+      expect(controller.save).toHaveBeenCalledWith(
+        "https://chromewebstore.google.com/detail/x",
+        undefined,
+      ),
+    );
+  });
 
   it("passes the context-menu link instead of the containing page", async () => {
     const api = await load();
@@ -101,6 +135,8 @@ describe("browser event wiring", () => {
       linkUrl: "https://example.com/link",
     });
     expect(controller.save).toHaveBeenCalledWith("https://example.com/link");
+    // A link that was never opened has no page to send.
+    expect(api.scripting.executeScript).not.toHaveBeenCalled();
     api.runtime.onInstalled.listeners[0]();
     await Promise.resolve();
     expect(api.contextMenus.create).toHaveBeenCalledWith(
@@ -116,7 +152,12 @@ describe("browser event wiring", () => {
       active: true,
       currentWindow: true,
     });
-    expect(controller.save).toHaveBeenCalledWith("https://example.com/active");
+    await vi.waitFor(() =>
+      expect(controller.save).toHaveBeenCalledWith(
+        "https://example.com/active",
+        "<html><body>page</body></html>",
+      ),
+    );
   });
 
   it("restores alarms on worker start and consumes named retry alarms", async () => {
@@ -184,6 +225,7 @@ describe("browser event wiring", () => {
     );
     expect(manifest.permissions).toEqual([
       "activeTab",
+      "scripting",
       "storage",
       "contextMenus",
       "alarms",
