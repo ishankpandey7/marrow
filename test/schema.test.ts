@@ -9,6 +9,7 @@ import {
   SAVE_LIMIT_SQLSTATE,
   SAVE_WINDOW_MS,
 } from "@/lib/rate-limit";
+import { NOTE_MAX, QUOTE_MAX } from "@/lib/highlights";
 
 /**
  * These tests enforce the schema invariants from ARCHITECTURE.md section 4
@@ -187,9 +188,10 @@ describe("the save limit in SQL", () => {
   // The route's check explains the wait; enforce_save_limit is the one a
   // direct PostgREST call cannot skip. Two copies of one number drift unless
   // something fails when they do.
-  const body = /function public\.enforce_save_limit[\s\S]*?\$\$([\s\S]*?)\$\$/.exec(
-    schema,
-  )?.[1];
+  const body =
+    /function public\.enforce_save_limit[\s\S]*?\$\$([\s\S]*?)\$\$/.exec(
+      schema,
+    )?.[1];
 
   it("matches lib/rate-limit.ts", () => {
     expect(body).toBeDefined();
@@ -207,6 +209,41 @@ describe("the save limit in SQL", () => {
       ).exec(schema)?.[1];
       expect(fnBody).toContain("perform public.enforce_save_limit(v_user)");
     }
+  });
+});
+
+describe("highlights (0010)", () => {
+  const migration = migrations.find((m) => m.name.startsWith("0010_"))?.sql;
+
+  it.each([
+    ["docs/SCHEMA.sql", schema],
+    ["0010", migration ?? ""],
+  ])(
+    "%s caps quote and note at the lengths lib/highlights.ts checks",
+    (_name, sql) => {
+      expect(sql).toContain(`check (char_length(quote) <= ${QUOTE_MAX})`);
+      expect(sql).toContain(
+        `check (note is null or char_length(note) <= ${NOTE_MAX})`,
+      );
+    },
+  );
+
+  it.each([
+    ["docs/SCHEMA.sql", schema],
+    ["0010", migration ?? ""],
+  ])("%s lets a session update the note and nothing else", (_name, sql) => {
+    // Supabase grants every column by default; the revoke has to come first.
+    const revoke = sql.indexOf(
+      "revoke insert, update on table public.highlights from anon, authenticated;",
+    );
+    const grant = sql.indexOf(
+      "grant update (note) on public.highlights to authenticated;",
+    );
+    expect(revoke).toBeGreaterThan(-1);
+    expect(grant).toBeGreaterThan(revoke);
+    expect(sql).not.toMatch(
+      /grant update \((?!note\))[^)]*\) on public\.highlights/,
+    );
   });
 });
 

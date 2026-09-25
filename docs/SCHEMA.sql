@@ -289,12 +289,18 @@ create table public.highlights (
   -- The highlighted text itself, stored verbatim. Offsets alone are not enough:
   -- a re-extraction can shift them, and a highlight that silently points at the
   -- wrong sentence is worse than one that fails to anchor.
+  -- Offsets are UTF-16 code units into toPlainText(sanitiseArticleHtml(html))
+  -- computed at read time, not into item_content.text, which was made by the
+  -- sanitiser of the day the item was fetched. Caps from 0010.
   quote        text not null check (quote <> ''),
   note         text,
   start_offset integer not null check (start_offset >= 0),
   end_offset   integer not null,
   created_at   timestamptz not null default now(),
   check (end_offset > start_offset),
+  constraint highlights_quote_length check (char_length(quote) <= 2000),
+  constraint highlights_note_length
+    check (note is null or char_length(note) <= 10000),
   constraint highlights_item_owner_fkey foreign key (item_id, user_id)
     references public.items (id, user_id) on delete cascade
 );
@@ -483,6 +489,14 @@ create policy highlights_update_own on public.highlights
 create policy highlights_delete_own on public.highlights
   for delete to authenticated
   using ((select auth.uid()) = user_id);
+
+-- Override Supabase's default table grants (0010): a session creates a
+-- highlight and later changes only its note. Quote and offsets are what the
+-- reader marked; moving a highlight means deleting it and making another.
+revoke insert, update on table public.highlights from anon, authenticated;
+grant insert (item_id, user_id, quote, note, start_offset, end_offset)
+  on public.highlights to authenticated;
+grant update (note) on public.highlights to authenticated;
 
 -- fetch_jobs / save_events ---------------------------------------------------
 -- Select only. See the note at the top of this section.
