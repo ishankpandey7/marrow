@@ -987,6 +987,86 @@ Second: HTML must not go into the offline queue. `chrome.storage.local`
 holds about 10 MB in total; a hundred queued pages would fill it and fail
 every save after it, including the token write.
 
+## Slice 11 — highlights + notes
+
+**Agent:** Claude Code. Needs the real database for the migration; the UI
+checks are Ishank's, because an agent cannot sign in.
+**Files:**
+- `supabase/migrations/0010_highlight_limits.sql` (new), `docs/SCHEMA.sql`
+- `lib/extract.ts` (export `toPlainText`), `lib/highlights.ts` (new: caps,
+  validation, re-anchoring), `lib/highlight-dom.ts` (new: rendered DOM to
+  plain-text offsets and back)
+- `components/reader/highlight-actions.ts` (new), `components/reader/highlights.tsx`
+  (new), `components/reader/reader.tsx`, `components/reader/reader-surface.tsx`,
+  `app/(app)/read/[id]/page.tsx`, `app/globals.css`
+- `test/highlight-actions.test.ts` (new), `lib/highlights.test.ts` (new),
+  `lib/highlight-dom.test.ts` (new), `test/schema.test.ts`
+
+Design notes from the 2026-09-23 review, agreed 2026-09-25. The table,
+its RLS and the owner-checked foreign key (0007) already exist; nothing has
+written to it yet.
+
+### Done when
+
+- [ ] Selecting text in a ready article offers **Highlight**. Saving it
+      stores `quote`, `start_offset`, `end_offset` and paints it at once.
+- [ ] Painting uses the CSS Custom Highlight API (`CSS.highlights` and
+      `::highlight()`). The rendered article HTML is never mutated: no
+      `<mark>`, no wrapped spans, no `innerHTML`.
+- [ ] Offsets are UTF-16 code units into
+      `toPlainText(sanitiseArticleHtml(item_content.html))`, computed at
+      read time. The server action recomputes that text and refuses a
+      highlight whose `text.slice(start, end)` is not exactly `quote`.
+- [ ] The DOM mapper reproduces `toPlainText` on the rendered article: it
+      skips the whole `.reader-image` span and any `noscript`, treats the same
+      block elements as word boundaries and collapses whitespace the same
+      way. A test renders the reader fixtures and asserts the mapper's text
+      equals `toPlainText` of the same HTML.
+- [ ] On load, each highlight is re-anchored: offsets first if they still
+      match the quote, otherwise the occurrence of `quote` nearest to
+      `start_offset`. One that anchors nowhere is still listed in the panel,
+      marked as not found in this copy, and is never painted somewhere
+      wrong.
+- [ ] A note can be added, edited and removed on any highlight, and a
+      highlight can be deleted.
+- [ ] 0010 caps lengths in SQL (quote at most 2,000 characters, note at most
+      10,000) and narrows the column grants: sessions may insert only the
+      content columns and may update only `note`. Verified live in a
+      rolled-back block: an over-long quote fails, an update of `quote` or
+      offsets is refused, an update of `note` succeeds.
+- [ ] A **Highlights** panel in the reader toolbar lists every highlight in
+      reading order with its note. It is the way in on browsers without
+      `highlightsFromPoint` (iPhone Safari today); where that exists, tapping a
+      painted highlight opens it in the panel.
+- [ ] `/read/[id]?h=<highlight id>` scrolls to that highlight and suppresses
+      the saved-position restore. The panel's **Copy link** produces it.
+- [ ] The public `/reader-preview` fixtures do not offer highlighting; they
+      have no database.
+- [ ] Tests: validation (match, mismatch, surrogate pairs, caps), re-anchoring
+      (moved, duplicated, missing quote), the DOM mapper against the
+      fixtures, the server actions (refuses a mismatch, a foreign item and an
+      oversize note; updates only `note`), and the migration text.
+- [ ] ARCHITECTURE section 7 describes highlights; SCHEMA.sql matches 0010.
+- [ ] Hand check by Ishank (click-list in Where things stand), in Chrome and on
+      a phone.
+
+### Gotcha
+
+The offsets are only meaningful against one exact string, and there are
+three candidates that look alike: the stored `item_content.text` (made by
+the sanitiser of the day the item was fetched), `toPlainText` of today's
+sanitised HTML, and the text the browser actually shows. The reader renders
+today's sanitised HTML, so offsets must be counted against
+`toPlainText(sanitiseArticleHtml(html))` at read time, and the DOM mapper
+must reproduce that function exactly. The image placeholder is the trap: it
+renders "Load image ↗" and the alt text, which `toPlainText` never saw, so a
+mapper that counts it shifts every highlight after the first image.
+
+Second: the stored quote is the truth, the offsets are a hint. A
+re-extraction or a sanitiser change moves offsets silently. Re-anchor by
+quote, and when the quote is not there, say so in the panel rather than
+painting the right length of the wrong sentence.
+
 ---
 
 ## Notes from the field
