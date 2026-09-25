@@ -2,6 +2,7 @@ import { Readability } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
 
 import { InvalidUrlError, canonicalise } from "@/lib/canonical";
+import { BLOCK_TAGS } from "@/lib/plain-text";
 import { sanitiseArticleHtml } from "@/lib/sanitize";
 import type { FailReason } from "@/lib/types";
 
@@ -248,17 +249,15 @@ function countWords(text: string): number {
   return trimmed === "" ? 0 : trimmed.split(/\s+/).length;
 }
 
-/**
- * Elements whose end is a word boundary. Without a separator at each one,
- * "…world</p><p>Second…" reads back as "worldSecond", which is one word where
- * there were two — and the word count is what the reading time is built from.
- */
-const BLOCK_ELEMENTS =
-  "p,div,br,hr,li,ul,ol,dl,dt,dd,h1,h2,h3,h4,h5,h6,blockquote,pre," +
-  "figure,figcaption,section,article,aside,table,caption,tr,th,td";
+const BLOCK_ELEMENTS = BLOCK_TAGS.join(",");
 
-/** Plain text of the HTML we are actually going to store, for search. */
-function toPlainText(html: string): string {
+/**
+ * Plain text of the HTML we are actually going to store, for search and the
+ * word count. Highlight offsets are measured in this text too, recomputed
+ * from today's sanitised HTML at read time; `lib/highlight-dom.ts` must
+ * produce exactly the same string from the rendered article.
+ */
+export function toPlainText(html: string): string {
   if (html.trim() === "") return "";
 
   // Wrapped as a whole document on purpose: linkedom builds no body for a bare
