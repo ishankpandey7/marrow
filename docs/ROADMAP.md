@@ -20,22 +20,41 @@ not check is worse than an unticked one, because next session it gets skipped.
 
 Kept current at the end of every session. Read this first; it is the handoff.
 
-**Last updated: 2026-09-25 — Slice 10 (save the page you are reading) deployed; hand check open.**
+**Last updated: 2026-09-25 — Slices 9 and 10 done and hand-checked; next is Slice 11 (highlights + notes).**
 
-- **Slice 10 is implemented, 0009 is applied and verified, and the code is
-  pushed.** A toolbar or shortcut save sends the open tab's HTML; the server
-  extracts it instead of fetching, so sites that refuse our server still
-  save. A two-lens review found four low issues, all fixed before the push
-  (details in the Slice 10 boxes). Only the hand check is open.
-- **What Ishank must do by hand (about 5 minutes):**
-  1. `chrome://extensions`, press Reload on Marrow, and allow the new
-     permission if Chrome asks.
-  2. Open an NDTV or openai.com article and save it with the toolbar icon
-     or Alt+Shift+S.
-  3. About 15 s later, reload /inbox and open it. The article is there.
-  4. (Firefox, when convenient.) Load the rebuilt `dist/firefox` and repeat.
-- **Next:** Slice 11, highlights + notes. Write it into this file first.
-- Slice 9's last box, a save from the extension, is covered by step 2 above.
+- **Slice 9 (fetch on save)** and **Slice 10 (the extension sends the open
+  page)** are deployed. Their migrations 0006–0009 are applied, and every box
+  is ticked with its evidence. Ishank confirmed both in Chrome: an /inbox save
+  and NDTV saves from the extension were readable within seconds.
+- **Still open from these slices:** Firefox has not been checked with the
+  rebuilt `extension/dist/firefox`. The Slice 6 browser checks listed below
+  also remain, apart from what Slices 9–10 exercised.
+- **Next: Slice 11, highlights + notes.** Write it into this file (checklist
+  and Gotcha) before building. The design notes from the 2026-09-23 review:
+  - paint with the CSS Custom Highlight API, never by mutating the
+    sanitised HTML;
+  - offsets are UTF-16, validated against
+    `toPlainText(sanitiseArticleHtml(item_content.html))` computed at read
+    time. `toPlainText` in `lib/extract.ts` is private today and must be
+    exported;
+  - the DOM mapper skips the whole `.reader-image` span and `noscript`;
+  - store `quote` verbatim and re-anchor by quote;
+  - add length caps and make only `note` updatable (column grants);
+  - a `?h=` deep link must suppress the saved-position restore;
+  - iPhone Safari lacks `highlightsFromPoint`, so the panel is the fallback.
+
+  0007 already made highlights reference `items (id, user_id)`.
+- **After Slice 11, in order:** Trash view, the "From your backlog" strip,
+  listen mode, reading stats, Pocket/Instapaper import, and AI summary.
+  Migrations continue from **0010**.
+- **Working notes for the next agent:**
+  - Supabase CLI: `npm-cache/_npx/aa8e5c70f9d8d161/node_modules/.bin/supabase`,
+    called by full path with the DB URL read from `.env.local` and never
+    printed. It needs sandbox escalation. `db query --file` takes a single
+    statement, so verify with a DO block that ends in `raise` (rolls back).
+  - Push a migration **before** any code that calls a changed function.
+  - Ishank pauses Supabase when idle.
+  - Signed-in pages cannot be opened by an agent; hand the click-list over.
 
 _Earlier on 2026-09-24:_
 
@@ -870,7 +889,7 @@ Numbered 9 because it was written after 8, not because it waits for it. Slices
       empty. `after()` is mocked; it throws outside a request scope.
 - [x] ARCHITECTURE section 10 and the decision log say this, replacing "the
       remedy is a plan or an external scheduler, not a code change".
-- [ ] Hand check by Ishank: save from `/inbox` and from the extension, open
+- [x] Hand check by Ishank: save from `/inbox` and from the extension, open
       each about 15 s later, and the article is there.
       /inbox is confirmed by Ishank ("manually diya to instant aa gaya"). The
       extension has not been reported yet.
@@ -946,9 +965,13 @@ alternative, a Chrome User-Agent on the server, was considered and rejected
       command, none for a link, no HTML on replay, oversize dropped) and the
       manifest permissions.
       Root 649 tests and extension 37 tests pass. So do typecheck, lint, the Next build and both extension builds; `node --check` parses the built files.
-- [ ] Hand check by Ishank, after reloading the extension and accepting the new
+- [x] Hand check by Ishank, after reloading the extension and accepting the new
       permission: save the NDTV and openai.com articles from the open tab,
       and both are readable.
+      Done in Chrome on 2026-09-25: two NDTV articles saved with the
+      shortcut were ready about 2 s later, at 743 and 418 words. An earlier
+      attempt that day reached nothing, most likely because the extension had
+      not been reloaded yet. Firefox has not been checked.
 
 ### Gotcha
 
