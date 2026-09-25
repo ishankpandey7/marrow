@@ -596,6 +596,159 @@ main.reader > .reader-state {
   border-color: var(--reader-accent);
 }
 
+/*
+ * Highlights (Slice 11) are painted by the CSS Custom Highlight API, not by
+ * elements. Colours are written per theme instead of through --reader-*
+ * variables, because browsers have disagreed about where a custom property
+ * inside ::highlight() is resolved from.
+ */
+::highlight(marrow-highlight),
+::highlight(marrow-highlight-noted) {
+  background-color: rgb(236 196 84 / 0.42);
+}
+::highlight(marrow-highlight-noted) {
+  text-decoration: underline dotted rgb(128 84 44 / 0.85);
+}
+::highlight(marrow-highlight-active) {
+  background-color: rgb(236 170 52 / 0.62);
+}
+.reader[data-theme="dark"] ::highlight(marrow-highlight),
+.reader[data-theme="dark"] ::highlight(marrow-highlight-noted) {
+  background-color: rgb(212 177 138 / 0.26);
+}
+.reader[data-theme="dark"] ::highlight(marrow-highlight-noted) {
+  text-decoration: underline dotted rgb(212 177 138 / 0.9);
+}
+.reader[data-theme="dark"] ::highlight(marrow-highlight-active) {
+  background-color: rgb(212 177 138 / 0.48);
+}
+@media (prefers-color-scheme: dark) {
+  .reader[data-theme="system"] ::highlight(marrow-highlight),
+  .reader[data-theme="system"] ::highlight(marrow-highlight-noted) {
+    background-color: rgb(212 177 138 / 0.26);
+  }
+  .reader[data-theme="system"] ::highlight(marrow-highlight-noted) {
+    text-decoration: underline dotted rgb(212 177 138 / 0.9);
+  }
+  .reader[data-theme="system"] ::highlight(marrow-highlight-active) {
+    background-color: rgb(212 177 138 / 0.48);
+  }
+}
+
+/* The panel hangs from the whole toolbar, not from its own button, so it can
+   sit at the right edge on a phone without running off the left. */
+.reader-highlights {
+  position: static;
+}
+.reader-highlights > summary {
+  gap: 2px;
+  grid-auto-flow: column;
+  padding-inline: 6px;
+}
+.reader-highlights-count {
+  font: 12px var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  color: var(--reader-muted);
+}
+.reader-highlights-panel {
+  top: 64px;
+  right: max(12px, calc((100% - 1120px) / 2 + 24px));
+  width: min(400px, calc(100% - 24px));
+  max-height: calc(100dvh - 80px);
+}
+.reader-highlights-empty {
+  color: var(--reader-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.reader-highlights-list {
+  display: grid;
+  gap: 18px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.reader-highlights-list li {
+  display: grid;
+  gap: 8px;
+  padding: 0 0 18px 12px;
+  border-left: 3px solid var(--reader-line);
+  border-bottom: 1px solid var(--reader-line);
+}
+.reader-highlights-list li[data-active="true"] {
+  border-left-color: var(--reader-accent);
+}
+.reader-highlights-list blockquote {
+  margin: 0;
+  font: 16px/1.5 var(--font-serif);
+  overflow-wrap: anywhere;
+}
+.reader-highlights-list label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--reader-muted);
+}
+.reader-highlights-list textarea {
+  width: 100%;
+  min-height: 64px;
+  padding: 8px 10px;
+  font: 14px/1.5 var(--font-sans);
+  color: var(--reader-ink);
+  background: var(--reader-raised);
+  border: 1px solid var(--reader-line);
+  border-radius: 4px;
+  resize: vertical;
+}
+.reader-highlight-lost {
+  font-size: 13px;
+  color: var(--reader-muted);
+  font-style: italic;
+}
+.reader-highlight-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.reader-highlight-actions button {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 13px;
+  border: 1px solid var(--reader-line);
+  border-radius: 4px;
+}
+.reader-highlight-actions button:hover {
+  border-color: var(--reader-accent);
+}
+.reader-highlight-bar {
+  position: fixed;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 32px);
+  padding: 6px 6px 6px 18px;
+  transform: translateX(-50%);
+  font-size: 14px;
+  color: var(--reader-paper);
+  background: var(--reader-ink);
+  border-radius: 999px;
+  box-shadow: 0 10px 30px #00000030;
+}
+.reader-highlight-bar p:only-child {
+  padding-right: 12px;
+}
+.reader-highlight-bar button {
+  min-height: 40px;
+  padding: 0 16px;
+  white-space: nowrap;
+  color: var(--reader-ink);
+  background: var(--reader-paper);
+  border-radius: 999px;
+}
+
 @media (max-width: 480px) {
   .reader-main {
     padding-inline: 22px;
@@ -619,7 +772,8 @@ main.reader > .reader-state {
   .reader-toolbar,
   .reader-fixtures,
   .reader-ending,
-  .reader-skip {
+  .reader-skip,
+  .reader-highlight-bar {
     display: none;
   }
   .reader {

@@ -211,6 +211,39 @@ describe("the server rendering boundary", () => {
     expect(html).toContain('data-theme="system"');
     expect(html).toContain("Skip to article");
   });
+  it("offers highlights on a readable signed-in article only", async () => {
+    const fixture = await readerFixture("longform");
+    if (!fixture) throw new Error("Missing longform fixture");
+    const saved = [
+      {
+        id: "87654321-4321-4321-4321-cba987654321",
+        quote: "At the end of the street",
+        note: "Opening line",
+        start_offset: 0,
+        end_offset: 24,
+        created_at: "2026-09-25T00:00:00Z",
+      },
+    ];
+    const render = (overrides: Record<string, unknown>) =>
+      renderToStaticMarkup(
+        createElement(Reader, {
+          ...fixture,
+          storageScope: "test",
+          highlights: saved,
+          ...overrides,
+        }),
+      );
+    const signedIn = render({});
+    expect(signedIn).toContain('aria-label="Highlights, 1"');
+    // Server HTML carries the list for the panel, never marks in the article.
+    expect(signedIn).toContain("Opening line");
+    expect(signedIn).not.toMatch(/<mark|marrow-highlight/);
+    expect(render({ preview: true })).not.toContain("Highlights,");
+    expect(render({ highlights: null })).not.toContain("Highlights,");
+    expect(
+      render({ item: { ...fixture.item, status: "pending" } }),
+    ).not.toContain("Highlights,");
+  });
   it("runs earlier extraction fixtures through the actual extraction pipeline", async () => {
     expect((await readerFixture("news-article"))?.item.title).toBe(
       "Kingfishers return to the Lea",

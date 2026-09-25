@@ -52,6 +52,8 @@ export function ReaderSurface({
   url,
   readable,
   preview = false,
+  restorePosition = true,
+  tools,
   children,
 }: {
   id: string;
@@ -61,6 +63,10 @@ export function ReaderSurface({
   url: string;
   readable: boolean;
   preview?: boolean;
+  /** False when a deep link names a highlight to scroll to instead. */
+  restorePosition?: boolean;
+  /** Extra toolbar controls, placed before the appearance menu. */
+  tools?: ReactNode;
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -172,7 +178,13 @@ export function ReaderSurface({
     let secondRestoreFrame = 0;
     const restoreFrame = requestAnimationFrame(() => {
       secondRestoreFrame = requestAnimationFrame(() => {
-        if (article && readable && resume > 0 && !window.location.hash) {
+        if (
+          article &&
+          readable &&
+          restorePosition &&
+          resume > 0 &&
+          !window.location.hash
+        ) {
           window.scrollTo({
             top: restoredScroll(
               resume,
@@ -288,7 +300,7 @@ export function ReaderSurface({
       document.removeEventListener("keydown", keydown);
       element.removeEventListener("click", reveal);
     };
-  }, [id, positionKey, preview, readable, router]);
+  }, [id, positionKey, preview, readable, restorePosition, router]);
 
   const href = originalUrl(url);
   return (
@@ -320,6 +332,7 @@ export function ReaderSurface({
               <span>%</span>
             </span>
           )}
+          {tools}
           <details ref={options} className="reader-options">
             <summary aria-label="Reading appearance">Aa</summary>
             <div className="reader-options-panel">

@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { ReactNode } from "react";
+import type { SavedHighlight } from "@/lib/highlights";
 import {
   DEFAULT_READER_SETTINGS,
   originalUrl,
@@ -8,6 +9,7 @@ import {
   type ReaderSettings,
 } from "@/lib/reading";
 import { ArticleBody } from "./article-body";
+import { Highlights } from "./highlights";
 import { ReaderState } from "./reader-state";
 import { ReaderSurface } from "./reader-surface";
 
@@ -18,6 +20,8 @@ export function Reader({
   storageScope,
   preview = false,
   fixtureNavigation,
+  highlights = null,
+  focusHighlight = null,
 }: {
   item: ReaderItem;
   html: string | null;
@@ -25,6 +29,9 @@ export function Reader({
   storageScope: string;
   preview?: boolean;
   fixtureNavigation?: ReactNode;
+  /** Null when they could not be read, or for the database-less previews. */
+  highlights?: SavedHighlight[] | null;
+  focusHighlight?: string | null;
 }) {
   const readable = item.status === "ready" && Boolean(html);
   const href = originalUrl(item.url);
@@ -42,6 +49,16 @@ export function Reader({
       url={item.fail_reason === "blocked_url" ? "" : item.url}
       readable={readable}
       preview={preview}
+      restorePosition={!focusHighlight}
+      tools={
+        readable && !preview && highlights ? (
+          <Highlights
+            itemId={item.id}
+            initial={highlights}
+            focusId={focusHighlight}
+          />
+        ) : null
+      }
     >
       <main id="reader-content" className="reader-main" tabIndex={-1}>
         {fixtureNavigation}
