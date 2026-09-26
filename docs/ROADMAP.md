@@ -20,39 +20,65 @@ not check is worse than an unticked one, because next session it gets skipped.
 
 Kept current at the end of every session. Read this first; it is the handoff.
 
-**Last updated: 2026-09-26 — Slice 11 (highlights + notes) done and hand-checked; next is Slice 12, the Trash view.**
+**Last updated: 2026-09-26 — Slice 12 (Trash) built, reviewed and pushed; waiting on Ishank's hand check.**
 
-- **Slice 11 is deployed and done.** Migration 0010 is applied and verified
-  live. Ishank ran the click-list on 2026-09-26 and reported it all fine
-  ("sab thik hai"). Twelve of thirteen boxes are ticked. The open one is the
-  "not found" panel entry, which cannot occur until the sanitiser or
-  `toPlainText` changes. A reviewer workflow found six UI edge-case bugs
-  before the push, and all six were fixed. Typecheck, lint, 691 tests and
-  `next build` pass.
-- **Next: Slice 12, the Trash view.** It is written below (files, Done-when
-  and Gotcha) and was shown to Ishank on 2026-09-26; build only after his ok.
-  What already exists: soft delete sets `items.deleted_at`, the daily purge
-  cron hard-deletes rows deleted more than 30 days ago
-  (`purge_deleted_items`), and re-saving a URL resurrects a deleted item
-  (Slice 1). Trash means a list of deleted items with Restore and
-  Delete-forever, and the delete copy should say how long an item waits.
-- **After Slice 12, in order:** the "From your backlog" strip, listen mode,
-  reading stats, Pocket/Instapaper import, and AI summary. Migrations
-  continue from **0011**.
+- **Slice 12 is deployed; only the hand check is open.** Migration 0011
+  (`items_trash_idx`) is applied and verified live, and so are the
+  Delete-forever cascade under `authenticated` and the Empty-trash cutoff
+  (rolled-back blocks). Twelve of fourteen boxes are ticked; the two open
+  ones are the signed-in list and Ishank's check. Two earlier-slice bugs were
+  fixed first (the library's all-or-nothing Undo, the "back to the top"
+  re-save copy). A reviewer workflow found four real bugs, all fixed.
+  Typecheck, lint, 780 tests and `next build` pass.
+- **What Ishank checks by hand (about 5 minutes, Chrome and then a phone).**
+  Use a throwaway article; Delete forever cannot be undone.
+  1. `/inbox`: a **Trash** button sits beside "Shortcuts ?".
+  2. Delete one item. The panel says "Moved 1 item to Trash", and its
+     footnote mentions 30 days and links to Trash.
+  3. Open Trash. The item is at the top: "Deleted just now · Kept for 29
+     more days" (30 if within the second). The title is not a link, and
+     **Open original ↗** opens the site in a new tab.
+  4. **Restore**. A message says it is back; the item is in the library at
+     its original date (in Archive if it was archived).
+  5. Delete it again, then in Trash press **Delete forever** once. A warning
+     appears and the button reads "Yes, delete forever". **Cancel** undoes
+     that. A quick double-click on "Delete forever" must *not* delete.
+  6. Press it, then "Yes, delete forever". The row goes and the status says
+     "Deleted forever."
+  7. With two or more items in Trash, press **Empty trash**. The dialog
+     states the count. A click inside the box keeps it open, a click
+     outside closes it. Reopen and confirm: Trash is empty and the button
+     is greyed out.
+  8. Phone: `/trash` fits, the buttons wrap, the dialog fits the screen.
+- **Next: Slice 13, the "From your backlog" strip.** Write it into this file
+  (files, Done-when and Gotcha) and show it to Ishank before building. After
+  it, in order: listen mode, reading stats, Pocket/Instapaper import, and AI
+  summary. Migrations continue from **0012**.
 - **Still open from earlier:** Firefox with the rebuilt extension, and the
-  Slice 6 browser checks further down.
+  Slice 6 browser checks further down. Two new Slice 8 boxes came out of
+  this slice: a fetch running when its item is deleted forever reports a
+  false `server_error`, and the library's tag dialog closes on a click in
+  its padding.
 - **Working notes for the next agent:**
   - Supabase CLI: `npm-cache/_npx/aa8e5c70f9d8d161/node_modules/.bin/supabase`,
     called by full path with the DB URL read from `.env.local` and never
     printed. It needs sandbox escalation. `db query --file` takes a single
     statement, so verify with a DO block that ends in `raise` (rolls back).
+    `drop index` inside such a block is a safe way to test an index choice.
   - Push a migration **before** any code that calls a changed function.
   - Ishank pauses Supabase when idle.
   - Signed-in pages cannot be opened by an agent; hand the click-list over.
     The public `/reader-preview` pages can stand in for anything that only
     needs the article DOM.
-  - A reviewer workflow costs a lot of Ishank's budget. Keep reviewers on
-    the diff.
+  - A reviewer workflow costs a lot of Ishank's budget: Slice 12's five
+    reviewers and ten verifiers spent about 1.16M tokens and ran out his
+    session limit. Keep reviewers on the diff and say the cost up front.
+
+_Earlier on 2026-09-26 — Slice 11 done and hand-checked:_ migration 0010
+applied and verified live; Ishank ran the click-list and reported it all
+fine ("sab thik hai"); twelve of thirteen boxes ticked (the open one is the
+"not found" panel entry, which nothing can produce yet); six review findings
+fixed; 691 tests.
 
 _Earlier on 2026-09-26 — the Slice 11 click-list Ishank ran:_ open a ready
 article; ✎ beside Aa; select, Highlight, paint; add and save a note (dotted
@@ -844,6 +870,16 @@ fast as they like. Test the 401 by actually calling it from outside.
       `noindex`.
 - [ ] README explains how to run it locally from a clean checkout, and that
       procedure has been followed on a clean checkout.
+- [ ] A fetch still running when its item is deleted forever (Slice 12) ends
+      quietly. Today its `item_content` write fails the foreign key and
+      `processJob` reports it as a retriable `server_error`, which
+      `recordJobReport` sends to Sentry as an error. Nothing is left behind;
+      only the report is wrong. Check for zero rows from the items update
+      (or 23503 from the content upsert) and settle as "item gone".
+- [ ] The library's tag and rename dialog (`filter-bar.tsx`) closes on a
+      click in its own padding, because a click there targets the dialog as
+      a backdrop click does. Slice 12 fixed the same thing in the Trash
+      dialog by moving the padding to an inner wrapper.
 
 ### Gotcha
 
@@ -1157,65 +1193,94 @@ page holding its Undo is closed, and remove it for good.
 Fixed first, in their own commits. Ishank agreed on 2026-09-26; both are
 earlier-slice bugs found while designing this one.
 
-- [ ] The library's Undo restored its batch all-or-nothing. Once Trash can
+- [x] The library's Undo restored its batch all-or-nothing. Once Trash can
       delete one of its items forever, Undo would fail for the rest on
       every click. Restore now brings back what still exists and says what
       is gone (`app/(app)/actions.ts`, `test/organise-actions.test.ts`,
       `test/organise-ui.test.ts`).
-- [ ] The save form said a re-save "brought it back to the top". The inbox
+      `70c1c5f`. Action tests: a partial batch restores the rest, a wholly
+      missing batch settles without writing, other changes still refuse a
+      partial batch. UI test: the notice clears the Undo record.
+- [x] The save form said a re-save "brought it back to the top". The inbox
       sorts by `created_at`, which a re-save does not change
       (`components/save-form.tsx`).
+      `3a078c7`: "it's in your inbox, under the date you first saved it."
 
 The slice itself:
 
 - [ ] `/trash` lists the signed-in user's deleted items, newest deletion
       first (`deleted_at desc, id desc`), 50 to a page with a lookahead row
       and `?page=` links. The library's heading row links to it.
-- [ ] Each row shows the title as plain text (the reader refuses a trashed
+      Loader and render tested (`test/trash-page.test.ts`,
+      `test/trash-ui.test.ts`). Left for Ishank's hand check: no agent can
+      open a signed-in page.
+- [x] Each row shows the title as plain text (the reader refuses a trashed
       item, so nothing links to `/read`), the site, an **Open original ↗**
       link, how long ago it was deleted and when it goes.
-- [ ] The countdown is one pure function, `purgeCountdown(deletedAt, now)`,
+      Render test: no `/read` link; the original opens in a new tab with
+      `noopener noreferrer nofollow`.
+- [x] The countdown is one pure function, `purgeCountdown(deletedAt, now)`,
       with `now` taken once on the server. It rounds down, says "less than a
       day" under 24 hours, and past the deadline says the item goes at the
       next daily clean-up — never "0 days" and never a negative number.
       Table-tested at 30 days, 29 days 23 hours, 1.5 days, 23 hours, zero,
       minus 3 days and a `deleted_at` in the future.
-- [ ] The number 30 lives once, as `PURGE_AFTER_DAYS` in `lib/constants.ts`.
+      `lib/trash.test.ts`, plus a sweep over 31 days asserting no row ever
+      promises more time than is left.
+- [x] The number 30 lives once, as `PURGE_AFTER_DAYS` in `lib/constants.ts`.
       `lib/queue.ts` derives `PURGE_AFTER` from it, and a test fails if they
       drift. No client component imports `lib/queue.ts`, which pulls in
       `node:` modules.
-- [ ] **Restore** clears `deleted_at` only where it is still set. The item
+      Source test on `components/trash-list.tsx`.
+- [x] **Restore** clears `deleted_at` only where it is still set. The item
       goes back where it was (to Archive if it was archived). A row already
       restored or re-saved elsewhere is reported as that, not as an error.
-- [ ] **Delete forever** asks twice, in place, and says what goes with the
+      Action tests assert the exact statement: only `deleted_at` changes.
+- [x] **Delete forever** asks twice, in place, and says what goes with the
       item: the saved copy, highlights and notes, reading position and tag
       links (the tags themselves stay). It deletes only rows whose
       `deleted_at` is still set, so an item re-saved or restored in another
       tab after the page loaded survives.
-- [ ] **Empty trash** opens a dialog that states the count, then deletes in
+      The review found that a double-click or a held Enter landed both
+      presses on the same button; both are now refused (`4d4fc9e`), and the
+      warning is tied to the button for screen readers.
+- [x] **Empty trash** opens a dialog that states the count, then deletes in
       one statement bounded by the newest `deleted_at` in the trash when the
       page loaded, passed back as the raw database string. An item trashed
       in another tab after that survives. The button is disabled when the
       trash is empty.
-- [ ] The library's delete copy says where things went. The undo panel reads
+      Action, loader and render tests; the cutoff shape was also run live
+      (below). The dialog opens on Cancel, not the destructive button.
+- [x] The library's delete copy says where things went. The undo panel reads
       "Moved N item(s) to Trash". Its footnote says Trash keeps items for 30
       days and links there. The `#` help line says "Move to Trash". The
       Delete button keeps its label.
-- [ ] 0011 adds `items_trash_idx on items (user_id, deleted_at desc, id desc)
+      `test/organise-ui.test.ts`.
+- [x] 0011 adds `items_trash_idx on items (user_id, deleted_at desc, id desc)
       where deleted_at is not null`. It is applied live, and `explain` with
       sequential scans off shows the Trash query using it.
-- [ ] Verified live in a rolled-back block, as an item's owner under
+      Applied 2026-09-26. Changed from the wording above: with 3 trashed
+      rows across 1 user the planner still prefers a backward scan of
+      `items_purge_idx`. With that index dropped inside a rolled-back
+      block, the Trash query under RLS is an Index Only Scan on
+      `items_trash_idx` with `user_id` as the index condition and no sort.
+- [x] Verified live in a rolled-back block, as an item's owner under
       `authenticated`: the Delete-forever statement removes a trashed item
       and cascades to its `item_content`, `item_tags` and `highlights`,
       although none of those has a session delete policy. The same statement
       leaves a live item alone.
-- [ ] Tests: the countdown table; id and cutoff validation; each action's
+      2026-09-26: content, highlight and job rows went 1/1/1 to 0/0/0; the
+      statement removed 1 of the 2 ids and the live one stayed. Empty trash
+      with a cutoff an hour back removed exactly the 3 older rows and kept
+      the one trashed just then.
+- [x] Tests: the countdown table; id and cutoff validation; each action's
       predicates (`deleted_at is not null` on restore and delete, the cutoff
       on Empty trash, count mismatches reported); nothing under
       `app/(app)/trash` imports `lib/db/service`; the list render (rows,
       empty state, the two-step delete, the dialog's count); the library's
       new copy; and the migration text.
-- [ ] ARCHITECTURE sections 4 (Soft delete) and 7 describe Trash;
+      780 tests pass, with typecheck, lint and `next build`.
+- [x] ARCHITECTURE sections 4 (Soft delete) and 7 describe Trash;
       SCHEMA.sql matches 0011.
 - [ ] Hand check by Ishank (click-list in Where things stand), in Chrome and
       on a phone.
@@ -1881,3 +1946,35 @@ inside this slice. The API acceptance box stays unticked.
   after a re-extraction. The schema keeps no surrounding text to tell them
   apart. Nothing re-extracts a ready item today, so it is recorded, not
   fixed.
+
+### 2026-09-26 — Slice 12, Trash
+
+- **At today's size the planner ignores `items_trash_idx`.** With 3 trashed
+  rows, all one user's, it scans `items_purge_idx` backward and filters on
+  `user_id`. Dropping `items_purge_idx` inside a rolled-back block showed the
+  Trash query as an Index Only Scan on `items_trash_idx` with no sort.
+  `drop index` is transactional, so this is a safe way to ask "can this
+  index serve the query" on the live database.
+- **A session's delete cascades through tables it cannot delete from.**
+  `item_content` and `fetch_jobs` have no delete policy for `authenticated`,
+  yet Delete forever as the owner took their rows with it. Postgres runs
+  foreign-key actions as the table owner, outside RLS.
+- **A click in a `<dialog>`'s own padding targets the dialog**, exactly as a
+  backdrop click does. The Trash dialog keeps its padding on an inner
+  wrapper; the library's tag dialog still has the old shape (Slice 8 box).
+- **linkedom has no `showModal`.** `test/trash-ui.test.ts` stubs it per test
+  (`modalDialog()`), including `open`.
+- **A two-press confirm on one button is also a double-click target.**
+  Keeping focus on the button is right for keyboards and screen readers,
+  but it puts the second press exactly where a double-click or a held Enter
+  lands. Refuse `event.detail > 1` and repeated Enter keydowns.
+- **Review cost.** Five reviewers and ten verifiers spent about 1.16M
+  subagent tokens, and Ishank's session limit ran out with three verifiers
+  unfinished. Verified real and fixed: double-click or held Enter past the
+  confirm, a false "was kept" message (found twice), and `/trash` missing
+  from the proxy. Of the three unverified, checked by hand: one duplicated
+  the "was kept" finding, and two were real and fixed (the warning did not
+  reach screen readers; a click in the dialog's padding dismissed it). A
+  refuted "no test for the page's queries" was a real gap and got a test.
+- **Two earlier-slice bugs were fixed first, with Ishank's agreement:** the
+  library's all-or-nothing Undo and the "back to the top" re-save copy.

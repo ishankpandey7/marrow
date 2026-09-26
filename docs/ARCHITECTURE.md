@@ -86,6 +86,7 @@ app/
   (app)/                  Authenticated shell. Layout enforces a session.
     inbox/                The list. The main screen.
     read/[id]/            Reading view.
+    trash/                Deleted items: restore, delete forever, empty.
     settings/
   api/
     save/route.ts         POST a URL. Creates the item, enqueues extraction.
@@ -173,6 +174,14 @@ ROADMAP.md, which is the specific case people get wrong.
 `deleted_at` rather than `DELETE`. Undo is expected behaviour in a list you
 triage quickly, and losing an article to a mis-tap is the kind of thing that
 makes someone stop trusting the app. A cron job hard-deletes after 30 days.
+
+Since Slice 12, `/trash` lists the soft-deleted items and offers Restore and
+Delete forever. Delete forever is a session `DELETE` under RLS
+(`items_delete_own`); `item_content`, `item_tags`, `highlights` and
+`fetch_jobs` cascade, and the cascade runs for a session even though none of
+those tables has a delete policy for one (verified live, 2026-09-26). The 30
+lives once, as `PURGE_AFTER_DAYS` in `lib/constants.ts`, and the purge's
+interval is derived from it.
 
 ### Extension tokens and the shared save implementation
 
@@ -524,6 +533,42 @@ disappears.
   triple-click on the last paragraph at the start of the footer.
 - The public previews have no database and offer no highlighting.
 
+### Trash (Slice 12)
+
+- `/trash` is its own page, not a fourth library state. The library refuses
+  every change except restore on a trashed row, and `filter-bar.tsx` is the
+  file Slice 8 has to split. The library links to it, and its undo panel says
+  where a deleted item went and for how long.
+- It lists the reader's deleted items, newest deletion first
+  (`deleted_at desc, id desc`), 50 to a page with a lookahead row, served by
+  `items_trash_idx` (0011). A second, single-row query returns the whole
+  trash's count and its newest `deleted_at`, so Empty trash can say what it
+  will delete from any page.
+- Nothing is optimistic. Nothing on the page can be undone, so a row changes
+  only when the server says it did: each Server Action revalidates `/trash`
+  and `/inbox`, and the rows that come back are the truth.
+- The actions run on the session client only. `purge_deleted_items` takes
+  no user and would empty every user's trash. Restore and Delete forever
+  repeat `deleted_at is not null`, because a re-save from any door, or a
+  restore in another tab, may have made the row live since the page loaded;
+  a row that no longer matches is kept and reported. Empty trash deletes by
+  predicate, bounded by the newest `deleted_at` the page read, passed back
+  as the database wrote it (microseconds included), so an item trashed after
+  the page loaded is never taken unseen.
+- Each row's time is put into words on the server by `purgeCountdown`, with
+  one `now` for the page. The purge runs once a day, so the deadline is the
+  earliest an item can go, not when it goes: figures round down, and past the
+  deadline the row says it goes at the next daily clean-up.
+- Titles are plain text, because the reader refuses a trashed item; the row
+  links to the original URL instead.
+- Delete forever is two presses on one button, so focus stays put between
+  them. That same button is where a double-click's second click and a held
+  Enter's repeats land, so both are refused. Empty trash's dialog opens on
+  Cancel for the same reason.
+- `proxy.ts` lists `/trash` as protected, so a signed-out visit is sent to
+  sign in with `next` and comes back to Trash. Without it the `(app)`
+  layout's redirect wins, and that one carries no `next`.
+
 ---
 
 ## 8. Environment variables
@@ -665,7 +710,8 @@ first attempt.
   table behind an item that still shows a spinner is the failure section 6
   forbids.
 - `/api/cron/purge` runs daily and hard-deletes items soft-deleted over 30 days
-  ago. `item_content`, `item_tags`, `highlights` and `fetch_jobs` cascade.
+  ago (`PURGE_AFTER_DAYS`). `item_content`, `item_tags`, `highlights` and
+  `fetch_jobs` cascade.
 - Every cron route requires `Authorization: Bearer ${CRON_SECRET}`, compared in
   constant time. A route that finds the variable unset fails closed with a 500
   and a Sentry event; it never treats "unconfigured" as "open".
@@ -855,3 +901,14 @@ re-litigate. Date, decision, reason.
   instead. The panel is the universal way in; tapping a painted highlight is
   a shortcut. It is hit-tested against range boxes rather than using
   `highlightsFromPoint`, which neither iPhone Safari nor this Chromium has.
+- **2026-09-26 — Trash is a page of its own, and it is not optimistic
+  (Slice 12).** Adding a `trash` state to the library would have meant hiding
+  every action but restore, a second sort and undo semantics for something
+  that cannot be undone, all inside the file Slice 8 must split. Delete
+  forever and Empty trash act only on rows that are still deleted, and Empty
+  trash stops at the newest deletion the page showed. The alternative, a
+  SECURITY DEFINER "empty my trash" function, would add nothing: a session
+  may already hard-delete its own rows.
+- **2026-09-26 — The library's Undo restores what is left of its batch.**
+  It used to refuse the whole batch if any item was gone. Once Delete
+  forever existed, that Undo would fail on every click and strand the rest.
