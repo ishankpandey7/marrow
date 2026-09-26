@@ -27,6 +27,9 @@ import {
   type Tag,
 } from "@/lib/tags";
 
+// Shortcuts that act on the page rather than on the selected rows.
+const PAGE_WIDE_KEYS = ["?", "/", "Escape"];
+
 const buttonClass =
   "rounded-md border border-edge px-3 py-2 text-sm hover:bg-ground-raised disabled:opacity-40";
 
@@ -147,6 +150,9 @@ export function OrganiseInbox({
   const search = useRef<HTMLInputElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const surface = useRef<HTMLDivElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  const hasBacklog = Boolean(backlog);
+  const hadBacklog = useRef(hasBacklog);
   const filterKey = filterUrl(filters);
   const currentFilterKey = useRef(filterKey);
   useEffect(() => {
@@ -188,6 +194,19 @@ export function OrganiseInbox({
     if (!document.activeElement || document.activeElement === document.body)
       surface.current?.focus({ preventScroll: true });
   }, []);
+
+  useEffect(() => {
+    // Not now on the strip's last item removes the strip, and the focused
+    // button with it. Focus would fall to <body>, where the shortcuts on the
+    // surface no longer hear the keyboard, so give it a place that stays.
+    if (
+      hadBacklog.current &&
+      !hasBacklog &&
+      (!document.activeElement || document.activeElement === document.body)
+    )
+      heading.current?.focus();
+    hadBacklog.current = hasBacklog;
+  }, [hasBacklog]);
 
   useEffect(() => {
     const element = dialog.current;
@@ -432,13 +451,26 @@ export function OrganiseInbox({
         }
       />
       {backlog && (
-        // The shortcuts below act on the list's selected rows. A key pressed
-        // on the strip's links and buttons is not meant for them.
-        <div onKeyDown={(event) => event.stopPropagation()}>{backlog}</div>
+        // Most shortcuts act on the list's selected rows, and a key pressed
+        // on the strip's links and buttons is not meant for them. The
+        // page-wide ones still get through.
+        <div
+          onKeyDown={(event) => {
+            if (!PAGE_WIDE_KEYS.includes(event.key)) event.stopPropagation();
+          }}
+        >
+          {backlog}
+        </div>
       )}
       <div className="my-5 space-y-4">
         <div className="flex items-center justify-between gap-3">
-          <h1 className="text-xl font-medium">Your library</h1>
+          <h1
+            ref={heading}
+            tabIndex={-1}
+            className="text-xl font-medium outline-none"
+          >
+            Your library
+          </h1>
           <div className="flex gap-2">
             <a href="/trash" className={buttonClass}>
               Trash

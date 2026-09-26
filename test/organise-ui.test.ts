@@ -329,6 +329,42 @@ describe("rendered triage reconciliation with offline action responses", () => {
       });
     expect(actions.mutate).not.toHaveBeenCalled();
     expect(row(item.id)).not.toBeNull();
+    // Page-wide shortcuts still work from the strip.
+    const find = container.querySelector<HTMLInputElement>(
+      "input[aria-label='Find on this page']",
+    );
+    if (!find) throw new Error("Missing find input");
+    const focusFind = vi.spyOn(find, "focus");
+    await act(async () => {
+      const event = new window.Event("keydown", { bubbles: true });
+      Object.defineProperty(event, "key", { value: "/" });
+      slot.dispatchEvent(event);
+    });
+    expect(focusFind).toHaveBeenCalledTimes(1);
+  });
+  it("gives focus to the library heading when the strip's last item is put off", async () => {
+    const withStrip = () =>
+      createElement(OrganiseInbox, {
+        initial,
+        filters: parseFilters({}),
+        backlog: createElement("button", { id: "slot" }, "Not now"),
+      });
+    await act(async () => {
+      root.render(withStrip());
+    });
+    const heading = container.querySelector("h1");
+    if (!heading) throw new Error("Missing heading");
+    const focusHeading = vi.spyOn(heading, "focus");
+    await act(async () => {
+      root.render(withStrip());
+    });
+    expect(focusHeading).not.toHaveBeenCalled();
+    await act(async () => {
+      root.render(
+        createElement(OrganiseInbox, { initial, filters: parseFilters({}) }),
+      );
+    });
+    expect(focusHeading).toHaveBeenCalledTimes(1);
   });
   it("says a delete went to Trash, for how long, and links there", async () => {
     actions.mutate.mockReturnValueOnce(deferred().promise);

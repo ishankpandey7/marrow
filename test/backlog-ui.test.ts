@@ -100,6 +100,9 @@ describe("the backlog strip", () => {
     await click(notNowButtons()[1]);
     expect(actions.notNow).toHaveBeenCalledWith(second.id);
     expect(container.querySelector("[role='alert']")).toBeNull();
+    expect(container.querySelector("[role='status']")?.textContent).toBe(
+      "Hidden from the strip for about a month.",
+    );
   });
 
   it("shows a refusal, and a lost connection, as an alert", async () => {

@@ -13,10 +13,12 @@ import { BACKLOG_RULE, type BacklogEntry } from "@/lib/backlog";
 export function BacklogStrip({ entries }: { entries: BacklogEntry[] }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
 
   function putOff(id: string) {
     setError(null);
+    setNotice(null);
     startTransition(async () => {
       let result: NotNowOutcome;
       try {
@@ -27,8 +29,11 @@ export function BacklogStrip({ entries }: { entries: BacklogEntry[] }) {
           message: "Connection lost. Reload to see what changed.",
         };
       }
-      if (result.ok) heading.current?.focus();
-      else setError(result.message);
+      if (result.ok) {
+        // It comes back at the first Monday after NOT_NOW_DAYS, hence about.
+        setNotice("Hidden from the strip for about a month.");
+        heading.current?.focus();
+      } else setError(result.message);
     });
   }
 
@@ -73,6 +78,9 @@ export function BacklogStrip({ entries }: { entries: BacklogEntry[] }) {
           </li>
         ))}
       </ul>
+      <p role="status" className="mt-2 text-xs text-ink-dim empty:hidden">
+        {notice}
+      </p>
       {error && (
         <p role="alert" className="mt-2 text-sm text-red-400">
           {error}
