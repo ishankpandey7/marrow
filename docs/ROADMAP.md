@@ -29,8 +29,8 @@ Kept current at the end of every session. Read this first; it is the handoff.
   `toPlainText` changes. A reviewer workflow found six UI edge-case bugs
   before the push, and all six were fixed. Typecheck, lint, 691 tests and
   `next build` pass.
-- **Next: Slice 12, the Trash view.** Write it into this file (files, a
-  Done-when checklist and a Gotcha) and show it to Ishank before building.
+- **Next: Slice 12, the Trash view.** It is written below (files, Done-when
+  and Gotcha) and was shown to Ishank on 2026-09-26; build only after his ok.
   What already exists: soft delete sets `items.deleted_at`, the daily purge
   cron hard-deletes rows deleted more than 30 days ago
   (`purge_deleted_items`), and re-saving a URL resurrects a deleted item
@@ -1118,6 +1118,130 @@ Second: the stored quote is the truth, the offsets are a hint. A
 re-extraction or a sanitiser change moves offsets silently. Re-anchor by
 quote, and when the quote is not there, say so in the panel rather than
 painting the right length of the wrong sentence.
+
+---
+
+## Slice 12 — Trash
+
+**Agent:** Claude Code. Needs the real database for 0011; the UI checks are
+Ishank's, because an agent cannot sign in.
+**Files:**
+- `supabase/migrations/0011_trash_index.sql` (new), `docs/SCHEMA.sql`
+- `lib/constants.ts` (`PURGE_AFTER_DAYS`), `lib/queue.ts` (derives
+  `PURGE_AFTER` from it), `lib/trash.ts` (new: the countdown, id and cutoff
+  validation)
+- `app/(app)/trash/page.tsx` (new), `app/(app)/trash/actions.ts` (new),
+  `components/trash-list.tsx` (new)
+- `components/filter-bar.tsx` (a Trash link and the delete copy, nothing else)
+- `lib/trash.test.ts` (new), `test/trash-actions.test.ts` (new),
+  `test/trash-ui.test.ts` (new), `test/organise-ui.test.ts`,
+  `test/schema.test.ts`
+
+Design notes from a read-only investigation on 2026-09-26. Soft delete, the
+library's in-page Undo and the 30-day purge already exist (Slices 1, 4 and
+7). What is missing is a place to see what was deleted, get it back once the
+page holding its Undo is closed, and remove it for good.
+
+- A separate `/trash` page, not a fourth state in the library. The library
+  refuses every action except restore on a trashed row, `matchesFilters`
+  hides deleted rows, and `filter-bar.tsx` is already the file Slice 8 has to
+  split.
+- No optimistic queue. Delete forever cannot be undone, so the page shows
+  only what the server confirmed: buttons disable while an action runs, then
+  the page reloads from the server.
+- The session client and RLS only. `items_delete_own` already lets a session
+  hard-delete its own rows; no SQL function and no service role is needed.
+
+### Done when
+
+Fixed first, in their own commits. Ishank agreed on 2026-09-26; both are
+earlier-slice bugs found while designing this one.
+
+- [ ] The library's Undo restored its batch all-or-nothing. Once Trash can
+      delete one of its items forever, Undo would fail for the rest on
+      every click. Restore now brings back what still exists and says what
+      is gone (`app/(app)/actions.ts`, `test/organise-actions.test.ts`,
+      `test/organise-ui.test.ts`).
+- [ ] The save form said a re-save "brought it back to the top". The inbox
+      sorts by `created_at`, which a re-save does not change
+      (`components/save-form.tsx`).
+
+The slice itself:
+
+- [ ] `/trash` lists the signed-in user's deleted items, newest deletion
+      first (`deleted_at desc, id desc`), 50 to a page with a lookahead row
+      and `?page=` links. The library's heading row links to it.
+- [ ] Each row shows the title as plain text (the reader refuses a trashed
+      item, so nothing links to `/read`), the site, an **Open original ↗**
+      link, how long ago it was deleted and when it goes.
+- [ ] The countdown is one pure function, `purgeCountdown(deletedAt, now)`,
+      with `now` taken once on the server. It rounds down, says "less than a
+      day" under 24 hours, and past the deadline says the item goes at the
+      next daily clean-up — never "0 days" and never a negative number.
+      Table-tested at 30 days, 29 days 23 hours, 1.5 days, 23 hours, zero,
+      minus 3 days and a `deleted_at` in the future.
+- [ ] The number 30 lives once, as `PURGE_AFTER_DAYS` in `lib/constants.ts`.
+      `lib/queue.ts` derives `PURGE_AFTER` from it, and a test fails if they
+      drift. No client component imports `lib/queue.ts`, which pulls in
+      `node:` modules.
+- [ ] **Restore** clears `deleted_at` only where it is still set. The item
+      goes back where it was (to Archive if it was archived). A row already
+      restored or re-saved elsewhere is reported as that, not as an error.
+- [ ] **Delete forever** asks twice, in place, and says what goes with the
+      item: the saved copy, highlights and notes, reading position and tag
+      links (the tags themselves stay). It deletes only rows whose
+      `deleted_at` is still set, so an item re-saved or restored in another
+      tab after the page loaded survives.
+- [ ] **Empty trash** opens a dialog that states the count, then deletes in
+      one statement bounded by the newest `deleted_at` in the trash when the
+      page loaded, passed back as the raw database string. An item trashed
+      in another tab after that survives. The button is disabled when the
+      trash is empty.
+- [ ] The library's delete copy says where things went. The undo panel reads
+      "Moved N item(s) to Trash". Its footnote says Trash keeps items for 30
+      days and links there. The `#` help line says "Move to Trash". The
+      Delete button keeps its label.
+- [ ] 0011 adds `items_trash_idx on items (user_id, deleted_at desc, id desc)
+      where deleted_at is not null`. It is applied live, and `explain` with
+      sequential scans off shows the Trash query using it.
+- [ ] Verified live in a rolled-back block, as an item's owner under
+      `authenticated`: the Delete-forever statement removes a trashed item
+      and cascades to its `item_content`, `item_tags` and `highlights`,
+      although none of those has a session delete policy. The same statement
+      leaves a live item alone.
+- [ ] Tests: the countdown table; id and cutoff validation; each action's
+      predicates (`deleted_at is not null` on restore and delete, the cutoff
+      on Empty trash, count mismatches reported); nothing under
+      `app/(app)/trash` imports `lib/db/service`; the list render (rows,
+      empty state, the two-step delete, the dialog's count); the library's
+      new copy; and the migration text.
+- [ ] ARCHITECTURE sections 4 (Soft delete) and 7 describe Trash;
+      SCHEMA.sql matches 0011.
+- [ ] Hand check by Ishank (click-list in Where things stand), in Chrome and
+      on a phone.
+
+Not in this slice: bulk selection or keyboard shortcuts in Trash; a Restore
+button on the reader's "not available" page; fetching a restored item that
+was still pending (it waits for the daily run, exactly as it does after the
+library's Undo today).
+
+### Gotcha
+
+Trash has two clocks, and neither is the reader's. An item becomes
+purgeable 30 days after `deleted_at`, but it only goes when a daily cron
+succeeds: within an hour of 04:17 UTC, and later still if Supabase is
+paused. So the countdown rounds down and, past the deadline, says "at the
+next daily clean-up", never "0 days". Take `now` once on the server and
+pass it down. A `Date.now()` in a client render disagrees with the server's
+and trusts a device clock that may be wrong.
+
+Second: Delete forever and Empty trash act on a list that went stale the
+moment it rendered. A re-save from anywhere (the web, the extension, the
+extension's offline replay) resurrects a trashed item, and so does a restore
+in another tab. Delete only rows that are still deleted, and bound Empty
+trash by the newest `deleted_at` the page read, so it never takes something
+the reader has not seen. Use the session client: `purge_deleted_items` looks
+like the right tool and would empty every user's trash.
 
 ---
 
