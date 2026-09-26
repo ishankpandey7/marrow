@@ -25,7 +25,10 @@ list of saved things is the product. Everything else serves it.
 **Explicitly not in scope, v1:**
 
 - Teams, sharing, public profiles, social anything.
-- Recommendations or an algorithmic feed.
+- Recommendations or an algorithmic feed. The "From your backlog" strip
+  (Slice 13) is not one: it applies a fixed rule, shown on the strip, to the
+  reader's own saves, and ranks nothing by behaviour or engagement. Changing
+  the rule means changing what the strip says it does.
 - PDFs, video, podcasts. URLs that resolve to HTML articles only.
 - Mobile apps. The web app is a PWA and that is the whole mobile story.
 - Client-side extraction. Extraction is a server concern; see §5. Since
@@ -569,6 +572,37 @@ disappears.
   sign in with `next` and comes back to Trash. Without it the `(app)`
   layout's redirect wins, and that one carries no `next`.
 
+### The backlog strip (Slice 13)
+
+- In the plain library view only (Inbox, All, no tag, page 1), a strip
+  between the save form and the list shows up to three ready articles saved
+  at least 14 days ago that are not archived, not in Trash, under 90% read,
+  and not put off with Not now. The rule is stated on the strip.
+- `public.backlog_strip(p_week, p_min_age_days)` (0012, then 0013) picks
+  them. Each candidate is ranked on `md5(week || id)`, and both time
+  conditions (the minimum age and Not now's expiry) are measured from the
+  start of the ISO week, Monday 00:00 UTC, not from `now()`. So the pick
+  holds all week and on every device: it changes when the week turns, when
+  one of its own items leaves, or when the reader brings an old item back
+  (unarchive, restore). It is SECURITY INVOKER with no user filter, like
+  `search_items`; EXECUTE is kept from anon and the service role. The
+  minimum age is passed from `lib/backlog.ts`, so changing it is a code
+  change.
+- `read_at` is never written until Slice 8, so "unfinished" means
+  `read_progress < 0.9`. That measures scrolling, not opening, so the copy
+  says "40% read" or "not started", never "unread".
+- Not now sets `items.resurface_after` 30 days ahead through the session
+  client; nothing else about the item changes. The item comes back at the
+  first week start after that, so the strip says "about a month".
+- When Not now empties the strip, the strip unmounts with the focused
+  button, and the library heading takes focus so the shortcuts keep
+  working. The strip's keydown guard lets `?`, `/` and Escape through.
+- The page asks for the strip once, with one `now` for the week and the
+  wording. If that request fails the strip is left out: it is a way back
+  into the library, and the library must still render.
+- The strip renders inside the library's keyboard surface, so its keydowns
+  stop at its wrapper; the triage shortcuts act only on the list.
+
 ---
 
 ## 8. Environment variables
@@ -912,3 +946,11 @@ re-litigate. Date, decision, reason.
 - **2026-09-26 — The library's Undo restores what is left of its batch.**
   It used to refuse the whole batch if any item was gone. Once Delete
   forever existed, that Undo would fail on every click and strand the rest.
+- **2026-09-26 — The backlog strip picks in SQL, by a per-item hash
+  (Slice 13).** PostgREST cannot order by an expression, and hashing in
+  JavaScript would fetch the whole backlog on every `/inbox` load. Ranking
+  each candidate on its own hash of the week, rather than shuffling the list
+  with one seed and taking the first three, keeps the strip still when
+  something else in the backlog changes. The review then found that a
+  per-item rank is not enough: with `now()` in the conditions, items joined
+  mid-week. 0013 measures from the week's start.

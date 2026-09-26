@@ -20,7 +20,63 @@ not check is worse than an unticked one, because next session it gets skipped.
 
 Kept current at the end of every session. Read this first; it is the handoff.
 
-**Last updated: 2026-09-26 — Slice 12 (Trash) done and hand-checked; next is Slice 13, the "From your backlog" strip.**
+**Last updated: 2026-09-26 — Slice 13 (backlog strip) built, reviewed and pushed; Ishank's hand check can start on Monday 28 Sep, 05:30 IST.**
+
+- **Slice 13 is deployed; only the signed-in checks are open.** Migrations
+  0012 and 0013 are applied and verified live in rolled-back blocks. Seven
+  of ten boxes are ticked; the open three are the strip on `/inbox`, triage
+  keeping it honest, and Ishank's hand check. A three-reviewer workflow
+  found four real bugs, all fixed. The biggest was that the pick could
+  change mid-week; 0013 measures from the week's start. Typecheck, lint,
+  843 tests and `next build` pass.
+- **Why the check waits until Monday.** The strip counts 14 days back from
+  the start of the week. This week that is 7 Sep, and the oldest save is
+  9 Sep, so the strip is empty until the week turns at 05:30 IST on 28 Sep.
+  Lowering the age to 7 days is a one-line change in `lib/backlog.ts`, if
+  Ishank wants it sooner.
+- **What Ishank checks by hand from 28 Sep (about 3 minutes, Chrome and then
+  a phone):**
+  1. `/inbox`: a "From your backlog" box sits between the save box and
+     "Your library", with up to three articles. Each says something like
+     "Saved 2 weeks ago · 12 min · not started", and the box states its
+     rule.
+  2. Reload, then open it on the phone: the same three.
+  3. A title opens the article.
+  4. **Not now** on one: "Hidden from the strip for about a month." appears
+     and another article takes its place (if one qualifies).
+  5. Archive a strip article from its row in the list below. It leaves the
+     strip without a reload.
+  6. Switch the view to Archive, or pick a tag: the strip is gone. Back to
+     Inbox: it returns.
+  7. Keyboard: Tab to a strip button and press `#`; nothing in the list is
+     deleted. Press `/`; the cursor jumps to "Find on this page".
+  8. Phone: a long title wraps and the Not now button still fits.
+- **Next after it: Slice 14, listen mode.** Write it into this file (files,
+  Done-when and Gotcha) and show it to Ishank before building. Then, in
+  order: reading stats, Pocket/Instapaper import, and AI summary.
+  Migrations continue from **0014**.
+- **Still open from earlier:** Firefox with the rebuilt extension, and the
+  Slice 6 browser checks further down. Two new Slice 8 boxes came out of
+  Slice 12: a fetch running when its item is deleted forever reports a
+  false `server_error`, and the library's tag dialog closes on a click in
+  its padding.
+- **Working notes for the next agent:**
+  - Supabase CLI: `npm-cache/_npx/aa8e5c70f9d8d161/node_modules/.bin/supabase`,
+    called by full path with the DB URL read from `.env.local` and never
+    printed. It needs sandbox escalation. `db query --file` takes a single
+    statement, so verify with a DO block that ends in `raise` (rolls back).
+    `drop index` inside such a block is a safe way to test an index choice.
+  - Push a migration **before** any code that calls a changed function.
+  - Ishank pauses Supabase when idle.
+  - Signed-in pages cannot be opened by an agent; hand the click-list over.
+    The public `/reader-preview` pages can stand in for anything that only
+    needs the article DOM.
+  - A reviewer workflow costs a lot of Ishank's budget: Slice 12's five
+    reviewers and ten verifiers spent about 1.16M tokens and ran out his
+    session limit; Slice 13's three reviewers and seven verifiers spent
+    about 660k. Keep reviewers on the diff and say the cost up front.
+
+_Earlier on 2026-09-26 — Slice 12 (Trash) done and hand-checked:_
 
 - **Slice 12 is deployed and done.** Ishank ran the click-list below on
   2026-09-26 and reported it all fine ("sab thik hai"); all fourteen boxes
@@ -50,29 +106,6 @@ Kept current at the end of every session. Read this first; it is the handoff.
      outside closes it. Reopen and confirm: Trash is empty and the button
      is greyed out.
   8. Phone: `/trash` fits, the buttons wrap, the dialog fits the screen.
-- **Next: Slice 13, the "From your backlog" strip.** It is written below
-  (files, Done-when and Gotcha) and was shown to Ishank on 2026-09-26; build
-  only after his ok. After it, in order: listen mode, reading stats, Pocket/Instapaper import, and AI
-  summary. Migrations continue from **0012**.
-- **Still open from earlier:** Firefox with the rebuilt extension, and the
-  Slice 6 browser checks further down. Two new Slice 8 boxes came out of
-  this slice: a fetch running when its item is deleted forever reports a
-  false `server_error`, and the library's tag dialog closes on a click in
-  its padding.
-- **Working notes for the next agent:**
-  - Supabase CLI: `npm-cache/_npx/aa8e5c70f9d8d161/node_modules/.bin/supabase`,
-    called by full path with the DB URL read from `.env.local` and never
-    printed. It needs sandbox escalation. `db query --file` takes a single
-    statement, so verify with a DO block that ends in `raise` (rolls back).
-    `drop index` inside such a block is a safe way to test an index choice.
-  - Push a migration **before** any code that calls a changed function.
-  - Ishank pauses Supabase when idle.
-  - Signed-in pages cannot be opened by an agent; hand the click-list over.
-    The public `/reader-preview` pages can stand in for anything that only
-    needs the article DOM.
-  - A reviewer workflow costs a lot of Ishank's budget: Slice 12's five
-    reviewers and ten verifiers spent about 1.16M tokens and ran out his
-    session limit. Keep reviewers on the diff and say the cost up front.
 
 _Earlier on 2026-09-26 — Slice 11 done and hand-checked:_ migration 0010
 applied and verified live; Ishank ran the click-list and reported it all
@@ -1316,15 +1349,17 @@ like the right tool and would empty every user's trash.
 **Agent:** Claude Code. Needs the real database for 0012; the UI checks are
 Ishank's, because an agent cannot sign in.
 **Files:**
-- `supabase/migrations/0012_backlog_strip.sql` (new), `docs/SCHEMA.sql`
+- `supabase/migrations/0012_backlog_strip.sql` (new),
+  `supabase/migrations/0013_backlog_week_start.sql` (new, a review fix),
+  `docs/SCHEMA.sql`
 - `lib/backlog.ts` (new: the rule's numbers, the week key, the "why" line)
 - `components/backlog-strip.tsx` (new), `components/backlog-actions.ts`
   (new: Not now)
 - `app/(app)/inbox/page.tsx` (loads the strip in the default view only),
   `components/filter-bar.tsx` (a slot under the save form, nothing else)
 - `lib/backlog.test.ts` (new), `test/backlog-actions.test.ts` (new),
-  `test/backlog-ui.test.ts` (new), `test/schema.test.ts`,
-  `test/organise-ui.test.ts`
+  `test/backlog-ui.test.ts` (new), `test/inbox-page.test.ts` (new),
+  `test/schema.test.ts`, `test/organise-ui.test.ts`
 
 Design notes from the 2026-09-24 research and its critic, re-checked against
 the code and the live database on 2026-09-26. A read-it-later list becomes a
@@ -1352,16 +1387,22 @@ The strip brings three of those back to the top of the library.
 
 ### Done when
 
-- [ ] 0012 adds `items.resurface_after timestamptz` (null means never put
+- [x] 0012 adds `items.resurface_after timestamptz` (null means never put
       off) and `public.backlog_strip(p_week text)`, which returns up to
       three rows (`id, url, title, site_name, created_at, reading_minutes,
       read_progress`) ordered by `md5(p_week || id)`. It is SECURITY INVOKER
       and filters by the rule only, so RLS confines it to the caller.
       EXECUTE is revoked from public, anon and service_role (which bypasses
       RLS) and granted to authenticated, as `search_items` is.
-- [ ] The 14 days and the 90% live once in `lib/backlog.ts`, and a test
+      Applied 2026-09-26. The review found that measuring against `now()`
+      let items join mid-week; 0013 (`b00f811`) replaced it with
+      `backlog_strip(p_week, p_min_age_days)`, measured from the week's start.
+- [x] The 14 days and the 90% live once in `lib/backlog.ts`, and a test
       fails if the migration's numbers drift from them.
-- [ ] Verified live in a rolled-back block, as the owner under
+      Changed by 0013: the 14 is now passed to the function, so it lives
+      only in `lib/backlog.ts`. The 0.9 and the 3 are pinned by
+      `test/schema.test.ts`, with every other condition of the rule.
+- [x] Verified live in a rolled-back block, as the owner under
       `authenticated`:
       - it returns three of the qualifying items;
       - the same week twice gives the same three, and another week gives a
@@ -1369,21 +1410,35 @@ The strip brings three of those back to the top of the library.
       - archiving an item outside the pick leaves the pick unchanged;
       - Not now on a picked item replaces it with the next one;
       - anon and service_role cannot execute it.
+      0012, 2026-09-26: 7 candidates; all five held, and a stranger got 0
+      rows. 0013: the 1-argument function is gone and the grants hold; W40
+      gives the same three twice; an item that turns 14 days old mid-W40
+      stays out of W40; Not now hides at once. W39 gives none, because the
+      oldest save (9 Sep) is newer than 21 Sep minus 14 days.
 - [ ] `/inbox` shows the strip only in the default view (Inbox, All, no tag,
       page 1), between the save form and "Your library", and renders nothing
       when no item qualifies.
-- [ ] Each entry links to `/read/<id>` and says why it is there, for
+      Loader and slot tested (`test/inbox-page.test.ts`,
+      `test/organise-ui.test.ts`). Left for Ishank's hand check, which has
+      to wait until the strip has items: from Monday 28 Sep, 05:30 IST.
+- [x] Each entry links to `/read/<id>` and says why it is there, for
       example "Saved 3 weeks ago · 12 min · 40% read", or "not started" at
       zero. Never "unread" or "not opened": an article opened and left at
       the top also reads 0, and nothing records opening. The strip states
       its rule in one line.
-- [ ] **Not now** sets `resurface_after` 30 days ahead, only on the
+      `lib/backlog.test.ts` and the render test.
+- [x] **Not now** sets `resurface_after` 30 days ahead, only on the
       reader's own item that is not in Trash, and the strip refills on the
       revalidated render.
+      Action test and the live checks. The review found that Not now on the
+      last item dropped focus to `<body>`; the library heading now takes it
+      (`0be061d`).
 - [ ] Triage in the list below keeps the strip honest. Archiving, deleting
       or finishing a picked item removes it from the strip on the next
       render, without a reload.
-- [ ] Tests:
+      Rests on `mutateLibrary`'s `revalidatePath('/inbox')`, which re-renders
+      the page and so the strip. Left for Ishank's hand check.
+- [x] Tests:
       - the ISO week key across a year boundary (2026-12-31 is 2026-W53;
         2027-01-04 is 2027-W01);
       - the "why" line (days and weeks, missing minutes, zero progress);
@@ -1393,8 +1448,10 @@ The strip brings three of those back to the top of the library.
       - the Not now action (refuses a malformed id, writes only
         `resurface_after`);
       - the migration text.
-- [ ] ARCHITECTURE §1 (why this is not a feed), §7 (the strip) and §13;
+      843 tests pass, with typecheck, lint and `next build`.
+- [x] ARCHITECTURE §1 (why this is not a feed), §7 (the strip) and §13;
       SCHEMA.sql matches 0012.
+      And 0013.
 - [ ] Hand check by Ishank (click-list in Where things stand), in Chrome and
       on a phone.
 
@@ -2089,3 +2146,27 @@ inside this slice. The API acceptance box stays unticked.
   refuted "no test for the page's queries" was a real gap and got a test.
 - **Two earlier-slice bugs were fixed first, with Ishank's agreement:** the
   library's all-or-nothing Undo and the "back to the top" re-save copy.
+
+### 2026-09-26 — Slice 13, the backlog strip
+
+- **A per-item rank keeps the order stable, not the set.** Ranking each
+  candidate on its own hash stopped unrelated changes from reshuffling the
+  strip, but with `now()` in the age and Not-now conditions, items still
+  crossed the line mid-week and pushed one of the three off. The live check
+  had passed because it used a fixed candidate set; the review caught it.
+  0013 measures both conditions from the start of the ISO week.
+- **`to_date(p_week, 'IYYY-"W"IW')` gives that week's Monday** in Postgres.
+  Checked live for 2026-W39, 2026-W53, 2027-W01 and 2020-W53.
+- **Measuring from the week's start delays a young library's first strip.**
+  In the week of 21 Sep the cut-off is 7 Sep and the oldest save is 9 Sep,
+  so the strip is empty until 28 Sep. The age is a parameter now, so this
+  is a code change if it ever needs to be.
+- **linkedom's `compareDocumentPosition` bit again**, in a test of where the
+  strip sits. Compare indexes in `querySelectorAll("*")` instead.
+- **Review.** Three reviewers and seven verifiers, about 660k tokens against
+  an estimate of 500–600k. Five confirmed findings, four of them distinct,
+  all fixed: the mid-week change (`b00f811`); focus falling to `<body>`
+  after Not now on the last item (found twice); and the keydown guard
+  swallowing `?`, `/` and Escape (`0be061d`). A refuted "no test pins the
+  rule's other conditions" was covered anyway when 0013's tests were
+  written.
