@@ -193,6 +193,13 @@ create index items_purge_idx
   on public.items (deleted_at)
   where deleted_at is not null;
 
+-- The Trash list and Empty trash (0011): one user's deleted items, newest
+-- deletion first. id breaks ties, because a bulk delete stamps one
+-- timestamp on every row it touches.
+create index items_trash_idx
+  on public.items (user_id, deleted_at desc, id desc)
+  where deleted_at is not null;
+
 -- Full-text search over the metadata. Weighted: a title match should beat a
 -- match on the site name. The body is indexed separately on item_content so a
 -- large article does not bloat the row the list reads.

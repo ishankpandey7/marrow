@@ -247,6 +247,26 @@ describe("highlights (0010)", () => {
   });
 });
 
+describe("the trash index (0011)", () => {
+  const migration = migrations.find((m) => m.name.startsWith("0011_"))?.sql;
+
+  it.each([
+    ["docs/SCHEMA.sql", schema],
+    ["0011", migration ?? ""],
+  ])(
+    "%s indexes one user's deleted items in the Trash list's order",
+    (_name, sql) => {
+      expect(sql.replace(/\s+/g, " ")).toContain(
+        "create index items_trash_idx on public.items (user_id, deleted_at desc, id desc) where deleted_at is not null;",
+      );
+    },
+  );
+
+  it("keeps the cross-user purge index", () => {
+    expect(schema).toContain("create index items_purge_idx");
+  });
+});
+
 describe("dollar quoting in docs/SCHEMA.sql", () => {
   // SETUP.md builds a fresh project by pasting this whole file, and one bad
   // quote makes Postgres reject all of it. A single `$` once slipped in when
