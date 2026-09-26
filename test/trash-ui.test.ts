@@ -45,10 +45,30 @@ function button(label: string) {
   if (!result) throw new Error(`Missing button: ${label}`);
   return result;
 }
-async function click(element: Element) {
+async function click(element: Element, detail = 1) {
   await act(async () => {
-    element.dispatchEvent(new window.Event("click", { bubbles: true }));
+    const event = new window.Event("click", { bubbles: true });
+    // A mouse click's count within the double-click interval.
+    Object.defineProperty(event, "detail", { value: detail });
+    element.dispatchEvent(event);
   });
+}
+// linkedom has no modal dialogs; stand in for the browser's.
+function modalDialog() {
+  const dialog = container.querySelector("dialog");
+  if (!dialog) throw new Error("Missing dialog");
+  const shown = vi.fn();
+  Object.assign(dialog, {
+    showModal: () => {
+      shown();
+      dialog.setAttribute("open", "");
+    },
+    close: () => dialog.removeAttribute("open"),
+  });
+  Object.defineProperty(dialog, "open", {
+    get: () => dialog.hasAttribute("open"),
+  });
+  return { dialog, shown };
 }
 async function render(props: Partial<Parameters<typeof TrashList>[0]> = {}) {
   await act(async () => {
@@ -154,6 +174,50 @@ describe("the Trash list", () => {
     );
   });
 
+  it("refuses the second click of a double-click as a confirmation", async () => {
+    await click(buttons("Delete forever")[0], 1);
+    await click(button("Yes, delete forever"), 2);
+    expect(actions.forever).not.toHaveBeenCalled();
+    expect(buttons("Yes, delete forever")).toHaveLength(1);
+    actions.forever.mockResolvedValueOnce({ ok: true, message: "Deleted." });
+    await click(button("Yes, delete forever"), 1);
+    expect(actions.forever).toHaveBeenCalledWith([entry.id]);
+  });
+
+  it("confirms from the keyboard, but not with a held Enter", async () => {
+    await click(buttons("Delete forever")[0], 0);
+    const confirm = button("Yes, delete forever");
+    let repeated: Event | undefined;
+    await act(async () => {
+      repeated = new window.Event("keydown", {
+        bubbles: true,
+        cancelable: true,
+      });
+      Object.defineProperty(repeated, "key", { value: "Enter" });
+      Object.defineProperty(repeated, "repeat", { value: true });
+      confirm.dispatchEvent(repeated);
+    });
+    expect(repeated?.defaultPrevented).toBe(true);
+    actions.forever.mockResolvedValueOnce({ ok: true, message: "Deleted." });
+    await click(confirm, 0);
+    expect(actions.forever).toHaveBeenCalledWith([entry.id]);
+  });
+
+  it("ties the warning to the confirming button for screen readers", async () => {
+    await click(buttons("Delete forever")[0]);
+    const described = button("Yes, delete forever").getAttribute(
+      "aria-describedby",
+    );
+    expect(described).toBe(`warning-${entry.id}`);
+    expect(
+      container.querySelector(`[id='warning-${entry.id}']`)?.textContent,
+    ).toContain("can't be undone");
+    await click(button("Cancel"));
+    expect(
+      buttons("Delete forever")[0].getAttribute("aria-describedby"),
+    ).toBeNull();
+  });
+
   it("says the connection was lost when an action throws", async () => {
     actions.forever.mockRejectedValueOnce(new Error("offline"));
     await click(buttons("Delete forever")[0]);
@@ -167,20 +231,7 @@ describe("the Trash list", () => {
 describe("Empty trash", () => {
   it("states the whole trash's count and sends back the cutoff it was shown", async () => {
     await render({ total: 37 });
-    const dialog = container.querySelector("dialog");
-    if (!dialog) throw new Error("Missing dialog");
-    // linkedom has no modal dialogs; stand in for the browser's.
-    const shown = vi.fn();
-    Object.assign(dialog, {
-      showModal: () => {
-        shown();
-        dialog.setAttribute("open", "");
-      },
-      close: () => dialog.removeAttribute("open"),
-    });
-    Object.defineProperty(dialog, "open", {
-      get: () => dialog.hasAttribute("open"),
-    });
+    const { dialog, shown } = modalDialog();
     await click(button("Empty trash"));
     expect(shown).toHaveBeenCalledTimes(1);
     expect(dialog.textContent).toContain("37 items will be deleted forever");
@@ -195,6 +246,35 @@ describe("Empty trash", () => {
     await click(button("Delete 37 items forever"));
     expect(actions.empty).toHaveBeenCalledWith(cutoff);
     expect(dialog.hasAttribute("open")).toBe(false);
+  });
+
+  it("opens with Cancel focused, not the destructive button", async () => {
+    const { dialog } = modalDialog();
+    const keep = [...dialog.querySelectorAll("button")].find(
+      (element) => element.textContent === "Cancel",
+    );
+    if (!keep) throw new Error("Missing Cancel");
+    const focus = vi.spyOn(keep, "focus");
+    await click(button("Empty trash"));
+    expect(focus).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes on the backdrop but not on a click inside its box", async () => {
+    const { dialog } = modalDialog();
+    await click(button("Empty trash"));
+    // In a browser a click in the dialog's own padding also targets the
+    // dialog, so the padding has to live on a wrapper that holds everything.
+    expect(dialog.className).toContain("p-0");
+    expect(dialog.children).toHaveLength(1);
+    const box = dialog.firstElementChild;
+    if (!box) throw new Error("Missing dialog content");
+    expect(box.className).toContain("p-5");
+    await click(box);
+    expect(dialog.hasAttribute("open")).toBe(true);
+    // A click on the backdrop of a modal dialog targets the dialog itself.
+    await click(dialog);
+    expect(dialog.hasAttribute("open")).toBe(false);
+    expect(actions.empty).not.toHaveBeenCalled();
   });
 
   it("is disabled when there is nothing in the trash", async () => {

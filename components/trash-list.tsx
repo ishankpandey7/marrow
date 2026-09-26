@@ -44,12 +44,18 @@ export function TrashList({
   const [confirming, setConfirming] = useState<string | null>(null);
   const [emptying, setEmptying] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
+  const keep = useRef<HTMLButtonElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
     const element = dialog.current;
     if (emptying) {
-      if (element && !element.open) element.showModal();
+      if (element && !element.open) {
+        element.showModal();
+        // showModal focuses the first button, which is the destructive one,
+        // and an Enter still held from opening the dialog would press it.
+        keep.current?.focus();
+      }
     } else if (element?.open) element.close();
   }, [emptying]);
 
@@ -128,15 +134,24 @@ export function TrashList({
                 Restore
               </button>
               {/* One button that changes its label, so focus stays on it
-                  between the first press and the second. */}
+                  between the first press and the second. That also puts the
+                  second press where a double-click or a held Enter lands, so
+                  both are refused: neither is a decision to delete. */}
               <button
                 className={confirming === entry.id ? dangerClass : buttonClass}
                 disabled={pending}
-                onClick={() =>
-                  confirming === entry.id
-                    ? run(() => deleteForever([entry.id]))
-                    : setConfirming(entry.id)
+                aria-describedby={
+                  confirming === entry.id ? `warning-${entry.id}` : undefined
                 }
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && event.repeat)
+                    event.preventDefault();
+                }}
+                onClick={(event) => {
+                  if (confirming !== entry.id) setConfirming(entry.id);
+                  else if (event.detail <= 1)
+                    run(() => deleteForever([entry.id]));
+                }}
               >
                 {confirming === entry.id
                   ? "Yes, delete forever"
@@ -161,7 +176,10 @@ export function TrashList({
               </a>
             </div>
             {confirming === entry.id && (
-              <p className="mt-2 text-xs text-ink-dim">
+              <p
+                id={`warning-${entry.id}`}
+                className="mt-2 text-xs text-ink-dim"
+              >
                 This deletes the saved copy, its highlights and notes, your
                 reading position and its tag links. The tags themselves stay. It
                 can&apos;t be undone.
@@ -210,34 +228,42 @@ export function TrashList({
         onClick={(event) => {
           if (event.target === event.currentTarget) setEmptying(false);
         }}
-        className="fixed inset-0 m-auto w-[calc(100%-2rem)] max-w-md rounded-xl border border-edge bg-ground p-5 text-ink backdrop:bg-black/60"
+        className="fixed inset-0 m-auto w-[calc(100%-2rem)] max-w-md rounded-xl border border-edge bg-ground p-0 text-ink backdrop:bg-black/60"
       >
-        <h2 id="empty-trash-title" className="font-medium">
-          Empty trash?
-        </h2>
-        <p className="mt-2 text-sm">
-          {total === null ? "Everything in Trash" : count(total)} will be
-          deleted forever, with the saved copies, highlights and notes. This
-          can&apos;t be undone.
-        </p>
-        <p className="mt-2 text-xs text-ink-dim">
-          Anything deleted after this page loaded stays in Trash.
-        </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button
-            className={dangerClass}
-            disabled={pending || !cutoff}
-            onClick={() => {
-              if (cutoff) run(() => emptyTrash(cutoff));
-            }}
-          >
-            {total === null
-              ? "Delete everything forever"
-              : `Delete ${count(total)} forever`}
-          </button>
-          <button className={buttonClass} onClick={() => setEmptying(false)}>
-            Cancel
-          </button>
+        {/* The padding lives on this wrapper, not the dialog, so a click in
+            it lands here and only a click on the backdrop dismisses. */}
+        <div className="p-5">
+          <h2 id="empty-trash-title" className="font-medium">
+            Empty trash?
+          </h2>
+          <p className="mt-2 text-sm">
+            {total === null ? "Everything in Trash" : count(total)} will be
+            deleted forever, with the saved copies, highlights and notes. This
+            can&apos;t be undone.
+          </p>
+          <p className="mt-2 text-xs text-ink-dim">
+            Anything deleted after this page loaded stays in Trash.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              className={dangerClass}
+              disabled={pending || !cutoff}
+              onClick={() => {
+                if (cutoff) run(() => emptyTrash(cutoff));
+              }}
+            >
+              {total === null
+                ? "Delete everything forever"
+                : `Delete ${count(total)} forever`}
+            </button>
+            <button
+              ref={keep}
+              className={buttonClass}
+              onClick={() => setEmptying(false)}
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       </dialog>
     </div>
