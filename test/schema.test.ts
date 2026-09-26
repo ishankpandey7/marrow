@@ -10,11 +10,7 @@ import {
   SAVE_WINDOW_MS,
 } from "@/lib/rate-limit";
 import { NOTE_MAX, QUOTE_MAX } from "@/lib/highlights";
-import {
-  BACKLOG_FINISHED,
-  BACKLOG_MIN_AGE_DAYS,
-  BACKLOG_SIZE,
-} from "@/lib/backlog";
+import { BACKLOG_FINISHED, BACKLOG_SIZE } from "@/lib/backlog";
 
 /**
  * These tests enforce the schema invariants from ARCHITECTURE.md section 4
@@ -272,34 +268,63 @@ describe("the trash index (0011)", () => {
   });
 });
 
-describe("the backlog strip (0012)", () => {
-  const migration = migrations.find((m) => m.name.startsWith("0012_"))?.sql;
-  const both = [
+describe("the backlog strip (0012, 0013)", () => {
+  const find = (prefix: string) =>
+    migrations.find((m) => m.name.startsWith(prefix))?.sql ?? "";
+  const current = [
     ["docs/SCHEMA.sql", schema],
-    ["0012", migration ?? ""],
+    ["0013", find("0013_")],
   ] as const;
   const fn = (sql: string) =>
-    /create function public\.backlog_strip\(p_week text\)[\s\S]*?\$\$;/.exec(
+    /create function public\.backlog_strip\(p_week text, p_min_age_days integer\)[\s\S]*?\$\$;/.exec(
       sql,
     )?.[0] ?? "";
 
-  it.each(both)("%s adds resurface_after to items", (_name, sql) => {
+  it.each([
+    ["docs/SCHEMA.sql", schema],
+    ["0012", find("0012_")],
+  ])("%s adds resurface_after to items", (_name, sql) => {
     expect(sql).toMatch(/resurface_after\s+timestamptz/);
   });
 
-  it.each(both)(
-    "%s uses the numbers lib/backlog.ts states on the strip",
+  it("0013 replaces 0012's one-argument function rather than overloading it", () => {
+    expect(find("0013_")).toContain(
+      "drop function public.backlog_strip(text);",
+    );
+    expect(schema).not.toMatch(/backlog_strip\(p_week text\)/);
+  });
+
+  it.each(current)(
+    "%s applies the whole rule, with the numbers lib/backlog.ts states",
     (_name, sql) => {
       const body = fn(sql);
-      expect(body).toContain(
-        `i.created_at <= now() - interval '${BACKLOG_MIN_AGE_DAYS} days'`,
-      );
-      expect(body).toContain(`i.read_progress < ${BACKLOG_FINISHED}`);
+      for (const condition of [
+        "i.status = 'ready'",
+        "i.deleted_at is null",
+        "i.archived_at is null",
+        `i.read_progress < ${BACKLOG_FINISHED}`,
+        "(i.resurface_after is null or i.resurface_after <= week.starts)",
+      ])
+        expect(body).toContain(condition);
       expect(body).toContain(`limit ${BACKLOG_SIZE};`);
     },
   );
 
-  it.each(both)(
+  it.each(current)(
+    "%s measures time from the start of the week, never from now()",
+    (_name, sql) => {
+      const body = fn(sql);
+      expect(body).toContain(
+        "to_date(p_week, 'IYYY-\"W\"IW')::timestamp at time zone 'UTC'",
+      );
+      expect(body).toContain(
+        "i.created_at <= week.starts - make_interval(days => p_min_age_days)",
+      );
+      expect(body).not.toMatch(/now\(\)/);
+    },
+  );
+
+  it.each(current)(
     "%s ranks each item on its own hash, and leaves the user to RLS",
     (_name, sql) => {
       const body = fn(sql);
@@ -310,14 +335,14 @@ describe("the backlog strip (0012)", () => {
     },
   );
 
-  it.each(both)(
+  it.each(current)(
     "%s keeps it from anon and from the service role",
     (_name, sql) => {
       const revoke = sql.indexOf(
-        "revoke all on function public.backlog_strip(text)\n  from public, anon, service_role;",
+        "revoke all on function public.backlog_strip(text, integer)\n  from public, anon, service_role;",
       );
       const grant = sql.indexOf(
-        "grant execute on function public.backlog_strip(text) to authenticated;",
+        "grant execute on function public.backlog_strip(text, integer) to authenticated;",
       );
       expect(revoke).toBeGreaterThan(-1);
       expect(grant).toBeGreaterThan(revoke);

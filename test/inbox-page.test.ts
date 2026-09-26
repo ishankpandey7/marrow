@@ -69,6 +69,7 @@ describe("the backlog strip on /inbox", () => {
     const props = await inboxProps();
     expect(state.rpc).toHaveBeenCalledWith("backlog_strip", {
       p_week: "2026-W39",
+      p_min_age_days: 14,
     });
     expect(props.backlog?.props.entries).toEqual([
       {

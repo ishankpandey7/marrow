@@ -3,6 +3,7 @@ import { loadLibrary } from "@/app/(app)/actions";
 import { BacklogStrip } from "@/components/backlog-strip";
 import { OrganiseInbox } from "@/components/filter-bar";
 import {
+  BACKLOG_MIN_AGE_DAYS,
   isoWeek,
   showsBacklog,
   toBacklogEntry,
@@ -21,6 +22,7 @@ async function loadBacklog(): Promise<BacklogEntry[]> {
   const now = Date.now();
   const { data, error } = await db.rpc("backlog_strip", {
     p_week: isoWeek(now),
+    p_min_age_days: BACKLOG_MIN_AGE_DAYS,
   });
   // The strip is a way back into the library, not part of it. If it cannot
   // load, the library below still must, so it is left out rather than shown

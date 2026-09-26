@@ -3,14 +3,23 @@ import { siteLabel } from "@/lib/trash";
 
 /**
  * The "From your backlog" strip (Slice 13). The rule lives in
- * public.backlog_strip (0012); these are its numbers, which the strip states
- * and test/schema.test.ts holds the migration to. The rule is fixed and
- * disclosed on purpose: ARCHITECTURE section 1 rules out an algorithmic feed.
+ * public.backlog_strip (0013); these are its numbers, which the strip states.
+ * The minimum age is passed to the function, and test/schema.test.ts holds
+ * the migration to the other two. The rule is fixed and disclosed on purpose:
+ * ARCHITECTURE section 1 rules out an algorithmic feed.
+ *
+ * The age is counted back from the start of the week, not from now, so an
+ * item joins the strip only when the week turns. Whenever it is shown, it
+ * was saved at least this long ago.
  */
 export const BACKLOG_MIN_AGE_DAYS = 14;
 /** read_progress at or above this counts as finished. */
 export const BACKLOG_FINISHED = 0.9;
 export const BACKLOG_SIZE = 3;
+/**
+ * Not now hides an item for at least this long. It comes back at the first
+ * week start after that, because the strip reads the week, not the hour.
+ */
 export const NOT_NOW_DAYS = 30;
 
 export const BACKLOG_RULE = `Articles you saved over ${BACKLOG_MIN_AGE_DAYS} days ago and haven't finished. A new pick every Monday.`;

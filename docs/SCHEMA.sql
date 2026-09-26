@@ -1225,19 +1225,23 @@ grant update (revoked_at) on public.extension_tokens to authenticated;
 grant all on table public.extension_tokens to service_role;
 
 -- ----------------------------------------------------------------------------
--- backlog_strip — "From your backlog" on /inbox (Slice 13, 0012).
+-- backlog_strip — "From your backlog" on /inbox (Slice 13; 0012, then 0013).
 --
--- Up to three ready articles saved at least 14 days ago, not archived, not in
--- Trash, less than 90% read, and not put off with Not now (resurface_after).
--- The rule is fixed and shown on the strip: ARCHITECTURE section 1 rules out
--- an algorithmic feed. lib/backlog.ts holds the same numbers.
+-- Up to three ready articles saved at least p_min_age_days before the start
+-- of the week, not archived, not in Trash, less than 90% read, and not put
+-- off with Not now (resurface_after) as of the week's start. The rule is
+-- fixed and shown on the strip: ARCHITECTURE section 1 rules out an
+-- algorithmic feed. lib/backlog.ts holds the minimum age and passes it.
 --
--- Each candidate is ranked on its own hash of the week and its id, so the
--- pick holds all week and changes only when one of its own items leaves.
--- SECURITY INVOKER with no user filter: RLS confines it, as search_items.
+-- Both time conditions are measured from the start of the ISO week p_week
+-- names, not from now(): otherwise items cross the line mid-week and push
+-- one of the three off (0013). Each candidate is ranked on its own hash of
+-- the week and its id, so the pick changes only when the week turns or one
+-- of its own items leaves. SECURITY INVOKER with no user filter: RLS confines
+-- it, as search_items.
 -- ----------------------------------------------------------------------------
 
-create function public.backlog_strip(p_week text)
+create function public.backlog_strip(p_week text, p_min_age_days integer)
 returns table (
   id              uuid,
   url             text,
@@ -1252,20 +1256,24 @@ stable
 security invoker
 set search_path = public, pg_temp
 as $$
+  with week as (
+    select to_date(p_week, 'IYYY-"W"IW')::timestamp at time zone 'UTC'
+             as starts
+  )
   select i.id, i.url, i.title, i.site_name, i.created_at,
          i.reading_minutes, i.read_progress
-    from public.items i
+    from public.items i, week
    where i.status = 'ready'
      and i.deleted_at is null
      and i.archived_at is null
-     and i.created_at <= now() - interval '14 days'
      and i.read_progress < 0.9
-     and (i.resurface_after is null or i.resurface_after <= now())
+     and i.created_at <= week.starts - make_interval(days => p_min_age_days)
+     and (i.resurface_after is null or i.resurface_after <= week.starts)
    order by md5(p_week || ':' || i.id::text), i.id
    limit 3;
 $$;
 
 -- service_role bypasses RLS and would get every user's backlog.
-revoke all on function public.backlog_strip(text)
+revoke all on function public.backlog_strip(text, integer)
   from public, anon, service_role;
-grant execute on function public.backlog_strip(text) to authenticated;
+grant execute on function public.backlog_strip(text, integer) to authenticated;
