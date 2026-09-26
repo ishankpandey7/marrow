@@ -1,3 +1,4 @@
+import type { Filters } from "@/lib/tags";
 import { siteLabel } from "@/lib/trash";
 
 /**
@@ -101,4 +102,17 @@ export function toBacklogEntry(row: BacklogRow, now: number): BacklogEntry {
     site: siteLabel(row),
     why: backlogReason(row, now),
   };
+}
+
+/**
+ * The strip belongs to the plain library only: Inbox, every item, no tag,
+ * the first page. Anywhere else it would sit above a list it is not part of.
+ */
+export function showsBacklog(filters: Filters): boolean {
+  return (
+    filters.state === "inbox" &&
+    filters.read === "all" &&
+    !filters.tag &&
+    filters.page === 1
+  );
 }

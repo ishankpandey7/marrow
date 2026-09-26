@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type ReactNode,
 } from "react";
 import { loadLibrary, mutateLibrary } from "@/app/(app)/actions";
 import { SaveForm } from "@/components/save-form";
@@ -117,9 +118,11 @@ interface Undo {
 export function OrganiseInbox({
   initial,
   filters,
+  backlog,
 }: {
   initial: LibrarySnapshot;
   filters: Filters;
+  backlog?: ReactNode;
 }) {
   const router = useRouter();
   const [previous, setPrevious] = useState(initial);
@@ -428,6 +431,11 @@ export function OrganiseInbox({
           filters.read === "all"
         }
       />
+      {backlog && (
+        // The shortcuts below act on the list's selected rows. A key pressed
+        // on the strip's links and buttons is not meant for them.
+        <div onKeyDown={(event) => event.stopPropagation()}>{backlog}</div>
+      )}
       <div className="my-5 space-y-4">
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-xl font-medium">Your library</h1>

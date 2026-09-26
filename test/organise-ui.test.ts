@@ -303,6 +303,33 @@ describe("rendered triage reconciliation with offline action responses", () => {
       "Undo rejected",
     );
   });
+  it("puts the backlog slot above the list, out of reach of its shortcuts", async () => {
+    await act(async () => {
+      root.render(
+        createElement(OrganiseInbox, {
+          initial,
+          filters: parseFilters({}),
+          backlog: createElement("button", { id: "slot" }, "Not now"),
+        }),
+      );
+    });
+    const slot = container.querySelector("#slot");
+    if (!slot) throw new Error("Missing slot");
+    // Document order by index: linkedom's compareDocumentPosition is wrong
+    // for some cases (see Notes from the field, Slice 11).
+    const order = [...container.querySelectorAll("*")];
+    const heading = container.querySelector("h1");
+    if (!heading) throw new Error("Missing heading");
+    expect(order.indexOf(slot)).toBeLessThan(order.indexOf(heading));
+    for (const pressed of ["#", "e", "f"])
+      await act(async () => {
+        const event = new window.Event("keydown", { bubbles: true });
+        Object.defineProperty(event, "key", { value: pressed });
+        slot.dispatchEvent(event);
+      });
+    expect(actions.mutate).not.toHaveBeenCalled();
+    expect(row(item.id)).not.toBeNull();
+  });
   it("says a delete went to Trash, for how long, and links there", async () => {
     actions.mutate.mockReturnValueOnce(deferred().promise);
     expect(
