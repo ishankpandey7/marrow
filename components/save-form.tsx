@@ -128,7 +128,7 @@ export function SaveForm({ isEmpty }: { isEmpty: boolean }) {
         {status.kind === "saved" && (
           <p className="mt-2 text-sm text-ink-dim">
             {status.alreadySaved
-              ? "Already in your library — brought it back to the top."
+              ? "Already in your library — it's in your inbox, under the date you first saved it."
               : "Saved."}
           </p>
         )}
