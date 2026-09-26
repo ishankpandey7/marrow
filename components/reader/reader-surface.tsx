@@ -88,6 +88,9 @@ export function ReaderSurface({
   // Server Action revalidation may return an older saved position while a reader
   // is still moving. Restoration belongs to opening an article, not every write.
   const openingProgress = useRef(initialProgress);
+  // Decided when the article opens. A later revalidation that no longer finds
+  // the deep-linked highlight (it was deleted) must not replay the restore.
+  const restoreOnOpen = useRef(restorePosition);
   let effectiveSettings = settings;
   if (raw) {
     try {
@@ -181,7 +184,7 @@ export function ReaderSurface({
         if (
           article &&
           readable &&
-          restorePosition &&
+          restoreOnOpen.current &&
           resume > 0 &&
           !window.location.hash
         ) {
@@ -300,7 +303,7 @@ export function ReaderSurface({
       document.removeEventListener("keydown", keydown);
       element.removeEventListener("click", reveal);
     };
-  }, [id, positionKey, preview, readable, restorePosition, router]);
+  }, [id, positionKey, preview, readable, router]);
 
   const href = originalUrl(url);
   return (
@@ -333,7 +336,19 @@ export function ReaderSurface({
             </span>
           )}
           {tools}
-          <details ref={options} className="reader-options">
+          <details
+            ref={options}
+            className="reader-options"
+            onToggle={(event) => {
+              // One toolbar panel at a time; they open in the same place.
+              const self = event.currentTarget;
+              if (!self.open) return;
+              for (const other of self
+                .closest("nav")
+                ?.querySelectorAll<HTMLDetailsElement>("details[open]") ?? [])
+                if (other !== self) other.open = false;
+            }}
+          >
             <summary aria-label="Reading appearance">Aa</summary>
             <div className="reader-options-panel">
               <p className="reader-options-title">Make yourself comfortable.</p>
