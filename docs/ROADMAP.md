@@ -20,33 +20,42 @@ not check is worse than an unticked one, because next session it gets skipped.
 
 Kept current at the end of every session. Read this first; it is the handoff.
 
-**Last updated: 2026-09-25 — Slices 9 and 10 done and hand-checked; next is Slice 11 (highlights + notes).**
+**Last updated: 2026-09-26 — Slice 11 (highlights + notes) built, reviewed, migrated and pushed; Ishank's browser check is next.**
 
-- **Slice 9 (fetch on save)** and **Slice 10 (the extension sends the open
-  page)** are deployed. Their migrations 0006–0009 are applied, and every box
-  is ticked with its evidence. Ishank confirmed both in Chrome: an /inbox save
-  and NDTV saves from the extension were readable within seconds.
-- **Still open from these slices:** Firefox has not been checked with the
-  rebuilt `extension/dist/firefox`. The Slice 6 browser checks listed below
-  also remain, apart from what Slices 9–10 exercised.
-- **Next: Slice 11, highlights + notes.** Write it into this file (checklist
-  and Gotcha) before building. The design notes from the 2026-09-23 review:
-  - paint with the CSS Custom Highlight API, never by mutating the
-    sanitised HTML;
-  - offsets are UTF-16, validated against
-    `toPlainText(sanitiseArticleHtml(item_content.html))` computed at read
-    time. `toPlainText` in `lib/extract.ts` is private today and must be
-    exported;
-  - the DOM mapper skips the whole `.reader-image` span and `noscript`;
-  - store `quote` verbatim and re-anchor by quote;
-  - add length caps and make only `note` updatable (column grants);
-  - a `?h=` deep link must suppress the saved-position restore;
-  - iPhone Safari lacks `highlightsFromPoint`, so the panel is the fallback.
-
-  0007 already made highlights reference `items (id, user_id)`.
-- **After Slice 11, in order:** Trash view, the "From your backlog" strip,
+- **Slice 11 is deployed with migration 0010 applied and verified live.**
+  Seven of thirteen boxes are ticked with evidence. Five of the six open
+  ones need a signed-in page and wait on the click-list below; the sixth,
+  the "not found" panel entry, cannot happen until the sanitiser or
+  `toPlainText` changes. A reviewer
+  workflow found six UI edge-case bugs, and all six are fixed. Typecheck,
+  lint, 691 tests and `next build` pass.
+- **What Ishank must check by hand (about 10 minutes, Chrome, then a
+  phone).** Open any ready article from /inbox.
+  1. The toolbar shows **✎** next to **Aa**.
+  2. Select a sentence. A dark **Highlight** bar appears at the bottom.
+     Click it: the sentence is painted, and the bar says "Highlighted." with
+     **Add a note**.
+  3. Click **Add a note**, type something, press **Save note**. It says
+     "Note saved." and the highlight gets a dotted underline.
+  4. Reload. The highlight is still painted and ✎ shows 1.
+  5. Triple-click the **last** paragraph. The Highlight bar appears. Press
+     **Escape**: the bar goes away and you stay on the article.
+  6. With nothing selected, click the painted highlight. The panel opens
+     with that entry marked.
+  7. Press **Copy link** in the panel and open the link in a new tab. The
+     page scrolls to that highlight, not to where you last stopped.
+  8. With the panel open, click **Aa**. The highlights panel closes.
+  9. Press **Delete** on the highlight with a note. It asks "Delete with
+     note?"; press again and the paint disappears.
+  10. In an article with an image, highlight a sentence after the image and
+      reload. The paint is on the same words.
+  11. On a phone: select text, tap **Highlight** at the bottom, and it
+      paints. Tap ✎ and the panel lists it.
+- **Next after the check:** Trash view, then the "From your backlog" strip,
   listen mode, reading stats, Pocket/Instapaper import, and AI summary.
-  Migrations continue from **0010**.
+  Migrations continue from **0011**.
+- **Still open from earlier:** Firefox with the rebuilt extension, and the
+  Slice 6 browser checks further down.
 - **Working notes for the next agent:**
   - Supabase CLI: `npm-cache/_npx/aa8e5c70f9d8d161/node_modules/.bin/supabase`,
     called by full path with the DB URL read from `.env.local` and never
@@ -55,6 +64,15 @@ Kept current at the end of every session. Read this first; it is the handoff.
   - Push a migration **before** any code that calls a changed function.
   - Ishank pauses Supabase when idle.
   - Signed-in pages cannot be opened by an agent; hand the click-list over.
+    The public `/reader-preview` pages can stand in for anything that only
+    needs the article DOM.
+
+_Earlier on 2026-09-25 — Slices 9 and 10 done and hand-checked:_
+
+- **Slice 9 (fetch on save)** and **Slice 10 (the extension sends the open
+  page)** are deployed. Their migrations 0006–0009 are applied, and every box
+  is ticked with its evidence. Ishank confirmed both in Chrome: an /inbox save
+  and NDTV saves from the extension were readable within seconds.
 
 _Earlier on 2026-09-24:_
 
@@ -993,14 +1011,16 @@ every save after it, including the token write.
 checks are Ishank's, because an agent cannot sign in.
 **Files:**
 - `supabase/migrations/0010_highlight_limits.sql` (new), `docs/SCHEMA.sql`
-- `lib/extract.ts` (export `toPlainText`), `lib/highlights.ts` (new: caps,
-  validation, re-anchoring), `lib/highlight-dom.ts` (new: rendered DOM to
-  plain-text offsets and back)
+- `lib/extract.ts` (export `toPlainText`), `lib/plain-text.ts` (new: the
+  block list both sides share), `lib/highlights.ts` (new: caps, validation,
+  re-anchoring), `lib/highlight-dom.ts` (new: rendered DOM to plain-text
+  offsets and back)
 - `components/reader/highlight-actions.ts` (new), `components/reader/highlights.tsx`
   (new), `components/reader/reader.tsx`, `components/reader/reader-surface.tsx`,
   `app/(app)/read/[id]/page.tsx`, `app/globals.css`
 - `test/highlight-actions.test.ts` (new), `lib/highlights.test.ts` (new),
-  `lib/highlight-dom.test.ts` (new), `test/schema.test.ts`
+  `lib/highlight-dom.test.ts` (new), `test/schema.test.ts`,
+  `lib/reading.test.ts`
 
 Design notes from the 2026-09-23 review, agreed 2026-09-25. The table,
 its RLS and the owner-checked foreign key (0007) already exist; nothing has
@@ -1010,43 +1030,70 @@ written to it yet.
 
 - [ ] Selecting text in a ready article offers **Highlight**. Saving it
       stores `quote`, `start_offset`, `end_offset` and paints it at once.
-- [ ] Painting uses the CSS Custom Highlight API (`CSS.highlights` and
+      Left for Ishank's hand check: no agent can open a signed-in page. The
+      pieces are tested (mapper, action, render), and a review found that a
+      triple-click on the last paragraph ended outside the article and was
+      refused; it is now clamped (`ae67dcd`).
+- [x] Painting uses the CSS Custom Highlight API (`CSS.highlights` and
       `::highlight()`). The rendered article HTML is never mutated: no
       `<mark>`, no wrapped spans, no `innerHTML`.
-- [ ] Offsets are UTF-16 code units into
+      Render test: the signed-in reader's HTML has no `<mark>`. The
+      `::highlight()` rules survive the production CSS build and painted
+      ranges on the longform preview in the pane's Chromium.
+- [x] Offsets are UTF-16 code units into
       `toPlainText(sanitiseArticleHtml(item_content.html))`, computed at
       read time. The server action recomputes that text and refuses a
       highlight whose `text.slice(start, end)` is not exactly `quote`.
-- [ ] The DOM mapper reproduces `toPlainText` on the rendered article: it
+      `test/highlight-actions.test.ts`, including a script the sanitiser drops.
+- [x] The DOM mapper reproduces `toPlainText` on the rendered article: it
       skips the whole `.reader-image` span and any `noscript`, treats the same
       block elements as word boundaries and collapses whitespace the same
       way. A test renders the reader fixtures and asserts the mapper's text
       equals `toPlainText` of the same HTML.
+      Also matched after hydration in a real Chromium on the longform,
+      news-article and bare-title previews (same length and hash). The
+      review ran about 5,000 native `Selection.modify` selections through it
+      in Chromium and every one mapped and round-tripped.
 - [ ] On load, each highlight is re-anchored: offsets first if they still
       match the quote, otherwise the occurrence of `quote` nearest to
       `start_offset`. One that anchors nowhere is still listed in the panel,
       marked as not found in this copy, and is never painted somewhere
       wrong.
+      `anchorQuote` is unit-tested. The "not found" entry has not been seen
+      in a browser, and nothing can produce a lost highlight until the
+      sanitiser or `toPlainText` changes.
 - [ ] A note can be added, edited and removed on any highlight, and a
       highlight can be deleted.
-- [ ] 0010 caps lengths in SQL (quote at most 2,000 characters, note at most
+      Actions tested; the panel is in the hand check.
+- [x] 0010 caps lengths in SQL (quote at most 2,000 characters, note at most
       10,000) and narrows the column grants: sessions may insert only the
       content columns and may update only `note`. Verified live in a
       rolled-back block: an over-long quote fails, an update of `quote` or
       offsets is refused, an update of `note` succeeds.
+      2026-09-25, as the owner of the newest item: over-long quote and note
+      23514; update of quote, of start_offset, and an insert naming `id` all
+      42501; note update and delete succeed. Zero rows existed beforehand.
 - [ ] A **Highlights** panel in the reader toolbar lists every highlight in
-      reading order with its note. It is the way in on browsers without
-      `highlightsFromPoint` (iPhone Safari today); where that exists, tapping a
-      painted highlight opens it in the panel.
+      reading order with its note. Tapping a painted highlight opens it in
+      the panel.
+      Changed from "where `highlightsFromPoint` exists": taps are hit-tested
+      against the ranges' boxes, which works on iPhone Safari too. Even the
+      pane's Chromium has no `highlightsFromPoint`. In the hand check.
 - [ ] `/read/[id]?h=<highlight id>` scrolls to that highlight and suppresses
       the saved-position restore. The panel's **Copy link** produces it.
-- [ ] The public `/reader-preview` fixtures do not offer highlighting; they
+      The page suppresses the restore only when it finds the quote in
+      today's text, and ReaderSurface decides once, at open (both review
+      findings). In the hand check.
+- [x] The public `/reader-preview` fixtures do not offer highlighting; they
       have no database.
-- [ ] Tests: validation (match, mismatch, surrogate pairs, caps), re-anchoring
+      Render test: no Highlights control with `preview`, for a pending item,
+      or when the highlights query failed.
+- [x] Tests: validation (match, mismatch, surrogate pairs, caps), re-anchoring
       (moved, duplicated, missing quote), the DOM mapper against the
       fixtures, the server actions (refuses a mismatch, a foreign item and an
       oversize note; updates only `note`), and the migration text.
-- [ ] ARCHITECTURE section 7 describes highlights; SCHEMA.sql matches 0010.
+      691 tests pass, with typecheck, lint and `next build`.
+- [x] ARCHITECTURE section 7 describes highlights; SCHEMA.sql matches 0010.
 - [ ] Hand check by Ishank (click-list in Where things stand), in Chrome and on
       a phone.
 
@@ -1670,3 +1717,38 @@ inside this slice. The API acceptance box stays unticked.
   `transpileModule`, which happily emitted a file declaring `body` twice. Run
   `npm run typecheck` in `extension/` before loading a build, and `node
   --check` on `dist` if in doubt.
+
+### 2026-09-26 — Slice 11, highlights + notes
+
+- **The mapper was checked in a real browser without signing in.** The
+  public `/reader-preview` pages render the same `ArticleBody`. A copy of
+  the walker, run in the pane's Chromium after hydration, produced exactly
+  the server's `toPlainText` (same length and hash) on three fixtures, the
+  image placeholder included. Use the previews this way for anything that
+  only needs the article DOM.
+- **linkedom's `compareDocumentPosition` is wrong for text inside a
+  preceding element.** It reports FOLLOWING where a browser says PRECEDING.
+  `edgePosition` compares the text node's parent element instead, which is
+  correct in both. Remember this before trusting linkedom for DOM ordering.
+- **`highlightsFromPoint` is missing even from the desktop app's Chromium**,
+  not only from iPhone Safari. Hit-testing range boxes needs no feature
+  detection.
+- **Six review findings, all in UI edge paths and all fixed** (`ae67dcd`,
+  `fa42c57`, `7cae04f`): a triple-click on the last paragraph ends at the
+  footer; a deleted deep-linked highlight replayed the old restore after a
+  revalidation; a deep link to a lost highlight opened at the top and
+  overwrote the position; Escape on the Highlight bar left the article;
+  typing during a note save was lost; the two toolbar panels could stack.
+  The first review run hit the session limit before any reviewer reported,
+  so it produced nothing; budget for the review.
+- **A stale `.next/dev/types/validator.ts` broke typecheck.** It still named
+  the Slice 10 `zz-body-probe` route. Deleting `.next/dev/types` fixed it;
+  `next dev` regenerates it.
+- **Python on Windows writes CRLF in text mode.** `.gitattributes` normalises
+  on commit, but pass `newline="
+"` when scripting edits so the working
+  tree stays LF.
+- **A short quote that occurs twice can re-anchor to the wrong occurrence**
+  after a re-extraction. The schema keeps no surrounding text to tell them
+  apart. Nothing re-extracts a ready item today, so it is recorded, not
+  fixed.

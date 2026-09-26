@@ -482,6 +482,48 @@ disappears.
   The original SVG is served locally; example-domain source links are fixtures,
   not working publisher URLs.
 
+### Highlights and notes (Slice 11)
+
+- A highlight stores `quote`, `start_offset`, `end_offset` and an optional
+  `note`. Offsets are UTF-16 code units into
+  `toPlainText(sanitiseArticleHtml(item_content.html))`, recomputed at read
+  time. They are not offsets into `item_content.text`, which the sanitiser
+  of the day the item was fetched produced, and which may differ from what
+  the reader renders today.
+- `lib/highlight-dom.ts` reads the rendered article back as that same
+  string. It skips the image placeholder (`.reader-image`, whose "Load image"
+  and alt text the stored HTML never had) and `noscript`, and shares the
+  block list in `lib/plain-text.ts` with `toPlainText`. A test renders the
+  fixtures through `ArticleBody` and compares; on 2026-09-25 the same
+  comparison also matched in a real Chromium, after hydration, on the three
+  preview fixtures.
+- `addHighlight` recomputes the text on the server and refuses a quote that
+  is not exactly the text at its offsets. On load, each highlight re-anchors:
+  its own offsets if they still hold the quote, otherwise the occurrence of
+  the quote nearest to `start_offset`. One whose quote is gone is listed in
+  the panel as not found and never painted. A short quote that occurs twice
+  can re-anchor to the wrong occurrence after a re-extraction; the schema
+  keeps no surrounding context to tell them apart.
+- Painting uses the CSS Custom Highlight API (`CSS.highlights`,
+  `::highlight()`). Nothing writes into the rendered article. A tap on a
+  painted highlight is hit-tested against the ranges' boxes, because
+  `highlightsFromPoint` is missing from iPhone Safari (and from the Chromium
+  in the desktop app's browser pane). The toolbar panel lists every
+  highlight either way.
+- Sessions insert only the content columns and update only `note` (0010).
+  Moving a highlight means deleting it and making another. Quote and note
+  length caps live in SQL as well as in `lib/highlights.ts`, because
+  PostgREST is reachable directly with a session.
+- `/read/[id]?h=<id>` scrolls to that highlight and suppresses the
+  saved-position restore, but only when the id is one of the item's
+  highlights and the page finds its quote in today's text. Otherwise the
+  article opens where the reader left off, because opening at the top lets
+  the first scroll overwrite the saved position. The decision is made once,
+  when the article opens.
+- A selection that runs past the article is clamped to it: Chromium ends a
+  triple-click on the last paragraph at the start of the footer.
+- The public previews have no database and offer no highlighting.
+
 ---
 
 ## 8. Environment variables
@@ -806,3 +848,10 @@ re-litigate. Date, decision, reason.
   the page, so the extension sends it, and extraction stays on the server.
   Offline replays send the link only, because `storage.local` cannot hold
   pages.
+- **2026-09-25 — Highlights are painted, not marked up (Slice 11).** The
+  article is sanitised HTML rendered on the server. Wrapping highlights in
+  `<mark>` would mutate the DOM React owns and move the text nodes the
+  offsets are counted over, so the CSS Custom Highlight API paints ranges
+  instead. The panel is the universal way in; tapping a painted highlight is
+  a shortcut. It is hit-tested against range boxes rather than using
+  `highlightsFromPoint`, which neither iPhone Safari nor this Chromium has.
