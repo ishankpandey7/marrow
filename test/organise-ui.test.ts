@@ -303,6 +303,30 @@ describe("rendered triage reconciliation with offline action responses", () => {
       "Undo rejected",
     );
   });
+  it("clears an Undo that the server settled with a notice, and shows the notice", async () => {
+    actions.mutate
+      .mockResolvedValueOnce({
+        ok: true,
+        snapshot: { ...initial, items: [second] },
+        message: null,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        snapshot: { ...initial, items: [second] },
+        message: "That item was deleted forever and cannot come back.",
+      });
+    await click(button("Delete"));
+    await click(button("Undo delete"));
+    expect(
+      [...container.querySelectorAll("button")].some(
+        (element) => element.textContent === "Undo delete",
+      ),
+    ).toBe(false);
+    expect(row(item.id)).toBeNull();
+    expect(container.querySelector("[role='alert']")?.textContent).toContain(
+      "deleted forever",
+    );
+  });
   it("rolls back a transport failure and reloads before enabling more writes", async () => {
     actions.mutate.mockRejectedValueOnce(new Error("offline"));
     await click(button("Archive"));

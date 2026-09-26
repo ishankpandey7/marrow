@@ -216,6 +216,49 @@ describe("authenticated mutations and authoritative failure responses", () => {
     expect(result.snapshot).toBeNull();
     expect(result.message).toContain("Could not confirm");
   });
+  it("restores what is left of an Undo batch when part of it was deleted forever", async () => {
+    state.responses.push(
+      success([{ id }]),
+      success([{ id }]),
+      success([]),
+      success([]),
+    );
+    const result = await mutateLibrary(
+      { kind: "restore", ids: [id, tagId] },
+      filters,
+    );
+    expect(result.ok).toBe(true);
+    expect(result.message).toBe(
+      "1 of those items was deleted forever, so only the rest came back.",
+    );
+    expect(state.calls).toContainEqual({ method: "in", args: ["id", [id]] });
+    expect(state.calls).toContainEqual({
+      method: "update",
+      args: [{ deleted_at: null }],
+    });
+  });
+  it("settles an Undo whose whole batch was deleted forever without writing", async () => {
+    state.responses.push(success([]), success([]), success([]));
+    const result = await mutateLibrary(
+      { kind: "restore", ids: [id, tagId] },
+      filters,
+    );
+    expect(result).toMatchObject({
+      ok: true,
+      message: "Those items were deleted forever and cannot come back.",
+    });
+    expect(state.calls.some((call) => call.method === "update")).toBe(false);
+  });
+  it("still refuses a partial batch for every change other than restore", async () => {
+    state.responses.push(success([{ id }]), success([]), success([]));
+    const result = await mutateLibrary(
+      { kind: "delete", ids: [id, tagId] },
+      filters,
+    );
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("no longer available");
+    expect(state.calls.some((call) => call.method === "update")).toBe(false);
+  });
   it("does not attach tags to unowned or deleted items", async () => {
     state.responses.push(success([]), success([]), success([]));
     expect(

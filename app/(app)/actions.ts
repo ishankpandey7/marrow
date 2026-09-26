@@ -95,11 +95,13 @@ export async function loadLibrary(input: Filters): Promise<{
   }
 }
 
+// Resolves to a notice for a change that went through but not in full, or
+// null. Throws for a change that was not applied.
 async function writeMutation(
   db: Database,
   userId: string,
   mutation: Mutation,
-): Promise<void> {
+): Promise<string | null> {
   if (mutation.kind === "rename") {
     const normalized = normalizeTag(mutation.name);
     const { data, error } = await db
@@ -111,7 +113,7 @@ async function writeMutation(
     if (error?.code === "23505")
       throw new Error("That tag already exists. Choose another name.");
     if (error || !data) throw new Error("Could not rename that tag.");
-    return;
+    return null;
   }
   // The composite foreign keys from 0007 already refuse another user's item.
   // Checking here as well turns that into a readable message, and also refuses
@@ -120,10 +122,26 @@ async function writeMutation(
   if (mutation.kind !== "restore")
     ownedQuery = ownedQuery.is("deleted_at", null);
   const owned = await ownedQuery;
-  if (owned.error || owned.data?.length !== mutation.ids.length)
-    throw new Error(
-      "One of those items is no longer available. The change was not applied.",
-    );
+  const unavailable = new Error(
+    "One of those items is no longer available. The change was not applied.",
+  );
+  if (owned.error || !owned.data) throw unavailable;
+  let ids = mutation.ids;
+  let notice: string | null = null;
+  if (owned.data.length !== ids.length) {
+    if (mutation.kind !== "restore") throw unavailable;
+    // Undo keeps its batch for as long as the page is open, and Trash (or
+    // the 30-day purge) can delete one of those items for good meanwhile.
+    // Refusing the whole batch would fail the same way on every click and
+    // strand the rest, so bring back what is still there.
+    const found = new Set(owned.data.map((row) => String(row.id)));
+    ids = ids.filter((id) => found.has(id));
+    const gone = mutation.ids.length - ids.length;
+    notice = ids.length
+      ? `${gone} of those items ${gone === 1 ? "was" : "were"} deleted forever, so only the rest came back.`
+      : `${gone === 1 ? "That item was" : "Those items were"} deleted forever and cannot come back.`;
+    if (!ids.length) return notice;
+  }
   if (mutation.kind === "tag") {
     const normalized = normalizeTag(mutation.name);
     // Ignore duplicates instead of overwriting the existing display name.
@@ -152,7 +170,7 @@ async function writeMutation(
       throw new Error(
         "Could not attach that tag. The tag name may still be available to reuse.",
       );
-    return;
+    return null;
   }
   if (mutation.kind === "untag") {
     const result = await db
@@ -161,7 +179,7 @@ async function writeMutation(
       .in("item_id", mutation.ids)
       .eq("tag_id", mutation.tagId);
     if (result.error) throw new Error("Could not remove that tag.");
-    return;
+    return null;
   }
   const timestamp = new Date().toISOString();
   const patch =
@@ -170,14 +188,15 @@ async function writeMutation(
       : mutation.kind === "favourite"
         ? { favourite: mutation.value }
         : { deleted_at: mutation.kind === "delete" ? timestamp : null };
-  let update = db.from("items").update(patch).in("id", mutation.ids);
+  let update = db.from("items").update(patch).in("id", ids);
   if (mutation.kind !== "restore") update = update.is("deleted_at", null);
   const result = await update.select("id");
   if (result.error) throw new Error("Could not save that change.");
-  if (result.data?.length !== mutation.ids.length)
+  if (result.data?.length !== ids.length)
     throw new Error(
       "Some items changed elsewhere. Your list has been reloaded; check the selection and try again.",
     );
+  return notice;
 }
 
 export async function mutateLibrary(
@@ -206,8 +225,9 @@ export async function mutateLibrary(
         message: "Your session expired. Sign in again before continuing.",
       };
     let message: string | null = null;
+    let notice: string | null = null;
     try {
-      await writeMutation(db, user.id, mutation);
+      notice = await writeMutation(db, user.id, mutation);
     } catch (error) {
       message =
         error instanceof Error ? error.message : "Could not save that change.";
@@ -220,7 +240,7 @@ export async function mutateLibrary(
         snapshot,
         message: message
           ? `${message} The list now shows the saved state.`
-          : null,
+          : notice,
       };
     } catch {
       return {
