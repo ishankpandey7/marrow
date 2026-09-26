@@ -20,18 +20,18 @@ not check is worse than an unticked one, because next session it gets skipped.
 
 Kept current at the end of every session. Read this first; it is the handoff.
 
-**Last updated: 2026-09-26 — Slice 12 (Trash) built, reviewed and pushed; waiting on Ishank's hand check.**
+**Last updated: 2026-09-26 — Slice 12 (Trash) done and hand-checked; next is Slice 13, the "From your backlog" strip.**
 
-- **Slice 12 is deployed; only the hand check is open.** Migration 0011
-  (`items_trash_idx`) is applied and verified live, and so are the
-  Delete-forever cascade under `authenticated` and the Empty-trash cutoff
-  (rolled-back blocks). Twelve of fourteen boxes are ticked; the two open
-  ones are the signed-in list and Ishank's check. Two earlier-slice bugs were
+- **Slice 12 is deployed and done.** Ishank ran the click-list below on
+  2026-09-26 and reported it all fine ("sab thik hai"); all fourteen boxes
+  are ticked. Migration 0011 (`items_trash_idx`) is applied and verified
+  live, and so are the Delete-forever cascade under `authenticated` and the
+  Empty-trash cutoff (rolled-back blocks). Two earlier-slice bugs were
   fixed first (the library's all-or-nothing Undo, the "back to the top"
   re-save copy). A reviewer workflow found four real bugs, all fixed.
   Typecheck, lint, 780 tests and `next build` pass.
-- **What Ishank checks by hand (about 5 minutes, Chrome and then a phone).**
-  Use a throwaway article; Delete forever cannot be undone.
+- **The click-list Ishank ran (Chrome, then a phone).** Use a throwaway
+  article; Delete forever cannot be undone.
   1. `/inbox`: a **Trash** button sits beside "Shortcuts ?".
   2. Delete one item. The panel says "Moved 1 item to Trash", and its
      footnote mentions 30 days and links to Trash.
@@ -1208,12 +1208,12 @@ earlier-slice bugs found while designing this one.
 
 The slice itself:
 
-- [ ] `/trash` lists the signed-in user's deleted items, newest deletion
+- [x] `/trash` lists the signed-in user's deleted items, newest deletion
       first (`deleted_at desc, id desc`), 50 to a page with a lookahead row
       and `?page=` links. The library's heading row links to it.
       Loader and render tested (`test/trash-page.test.ts`,
-      `test/trash-ui.test.ts`). Left for Ishank's hand check: no agent can
-      open a signed-in page.
+      `test/trash-ui.test.ts`). Confirmed by Ishank on 2026-09-26 against
+      the click-list in Where things stand ("sab thik hai").
 - [x] Each row shows the title as plain text (the reader refuses a trashed
       item, so nothing links to `/read`), the site, an **Open original ↗**
       link, how long ago it was deleted and when it goes.
@@ -1282,8 +1282,9 @@ The slice itself:
       780 tests pass, with typecheck, lint and `next build`.
 - [x] ARCHITECTURE sections 4 (Soft delete) and 7 describe Trash;
       SCHEMA.sql matches 0011.
-- [ ] Hand check by Ishank (click-list in Where things stand), in Chrome and
+- [x] Hand check by Ishank (click-list in Where things stand), in Chrome and
       on a phone.
+      Confirmed by Ishank on 2026-09-26 ("sab thik hai").
 
 Not in this slice: bulk selection or keyboard shortcuts in Trash; a Restore
 button on the reader's "not available" page; fetching a restored item that
