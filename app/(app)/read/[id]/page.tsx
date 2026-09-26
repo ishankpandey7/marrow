@@ -2,12 +2,15 @@ import { redirect } from "next/navigation";
 import { Reader } from "@/components/reader/reader";
 import { ReaderState } from "@/components/reader/reader-state";
 import { createServerSupabase } from "@/lib/db/server";
+import { toPlainText } from "@/lib/extract";
 import {
   HIGHLIGHT_COLUMNS,
+  anchorQuote,
   isUuid,
   type SavedHighlight,
 } from "@/lib/highlights";
 import { isRecord, readerSettings, type ReaderItem } from "@/lib/reading";
+import { sanitiseArticleHtml } from "@/lib/sanitize";
 
 export const dynamic = "force-dynamic";
 // Try again fetches in after() inside its Server Action, which takes the
@@ -58,14 +61,23 @@ export default async function ReadingPage({
   const highlights = highlightResult.error
     ? null
     : (highlightResult.data as SavedHighlight[]);
-  // Only a highlight that exists suppresses the saved-position restore; a
-  // stale link to a deleted one opens where the reader left off.
+  const html = contentResult.error ? null : (contentResult.data?.html ?? null);
+  const target = isUuid(h)
+    ? highlights?.find((highlight) => highlight.id === h)
+    : undefined;
+  // Only a highlight still found in today's text suppresses the saved-position
+  // restore. A link to a deleted or lost one opens where the reader left off,
+  // instead of at the top with a first scroll that overwrites the position.
   const focusHighlight =
-    isUuid(h) && highlights?.some((highlight) => highlight.id === h) ? h : null;
+    target &&
+    html &&
+    anchorQuote(toPlainText(sanitiseArticleHtml(html)), target)
+      ? target.id
+      : null;
   return (
     <Reader
       item={itemResult.data as ReaderItem}
-      html={contentResult.error ? null : (contentResult.data?.html ?? null)}
+      html={html}
       settings={readerSettings(isRecord(profile) ? profile.reader : undefined)}
       storageScope={user.id}
       highlights={highlights}

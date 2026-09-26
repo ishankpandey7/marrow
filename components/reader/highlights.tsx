@@ -144,6 +144,11 @@ export function Highlights({
       if (focus && range) {
         setActiveId(focus);
         scrollToRange(range);
+      } else if (focus) {
+        // The server found it but this browser's text does not (a page
+        // translator, say). Show it where it is listed as not found.
+        setActiveId(focus);
+        setPanelOpen(true);
       }
     });
     return () => cancelAnimationFrame(frame);
@@ -271,6 +276,23 @@ export function Highlights({
     return () => document.removeEventListener("keydown", key, true);
   }, [panelOpen, activeId]);
 
+  const barShowing = !panelOpen && (selection !== null || notice !== null);
+  useEffect(() => {
+    if (!barShowing) return;
+    // As with the panel: while the Highlight offer or its notice is up,
+    // Escape dismisses it rather than leaving the article.
+    function key(event: KeyboardEvent) {
+      if (event.key !== "Escape" || event.isComposing) return;
+      event.preventDefault();
+      document.getSelection()?.removeAllRanges();
+      setSelection(null);
+      window.clearTimeout(noticeTimer.current);
+      setNotice(null);
+    }
+    document.addEventListener("keydown", key, true);
+    return () => document.removeEventListener("keydown", key, true);
+  }, [barShowing]);
+
   useEffect(() => () => window.clearTimeout(noticeTimer.current), []);
 
   function clearSelection() {
@@ -326,16 +348,19 @@ export function Highlights({
   }
 
   async function saveNote(highlight: SavedHighlight) {
+    const sent = drafts[highlight.id] ?? highlight.note ?? "";
     setBusy(true);
     try {
-      const note = await saveHighlightNote(
-        highlight.id,
-        drafts[highlight.id] ?? highlight.note ?? "",
-      );
+      const note = await saveHighlightNote(highlight.id, sent);
       setHighlights((list) =>
         list.map((h) => (h.id === highlight.id ? { ...h, note } : h)),
       );
-      setDrafts((current) => without(current, highlight.id));
+      // Keep anything typed while the save was in flight.
+      setDrafts((current) =>
+        current[highlight.id] === sent
+          ? without(current, highlight.id)
+          : current,
+      );
       say(note ? "Note saved." : "Note removed.");
     } catch {
       say("Could not save the note. Your words are still here; try again.");
@@ -392,47 +417,42 @@ export function Highlights({
   });
   const tooLong = selection !== null && selection.quote.length > QUOTE_MAX;
 
-  const bar =
-    !panelOpen && (selection || notice) ? (
-      <div
-        className="reader-highlight-bar"
-        role="region"
-        aria-label="Highlight"
-      >
-        {selection ? (
-          tooLong ? (
-            <p>
-              That&apos;s more than one highlight can hold (
-              {QUOTE_MAX.toLocaleString("en")} characters).
-            </p>
-          ) : (
-            <button
-              type="button"
-              disabled={busy}
-              // Keep the selection: a mouse press on a button would clear it.
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={highlight}
-            >
-              {busy ? "Saving…" : "Highlight"}
-            </button>
-          )
+  const bar = barShowing ? (
+    <div className="reader-highlight-bar" role="region" aria-label="Highlight">
+      {selection ? (
+        tooLong ? (
+          <p>
+            That&apos;s more than one highlight can hold (
+            {QUOTE_MAX.toLocaleString("en")} characters).
+          </p>
         ) : (
-          notice && (
-            <>
-              <p role="status">{notice.message}</p>
-              {notice.noteFor && (
-                <button
-                  type="button"
-                  onClick={() => notice.noteFor && openNote(notice.noteFor)}
-                >
-                  Add a note
-                </button>
-              )}
-            </>
-          )
-        )}
-      </div>
-    ) : null;
+          <button
+            type="button"
+            disabled={busy}
+            // Keep the selection: a mouse press on a button would clear it.
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={highlight}
+          >
+            {busy ? "Saving…" : "Highlight"}
+          </button>
+        )
+      ) : (
+        notice && (
+          <>
+            <p role="status">{notice.message}</p>
+            {notice.noteFor && (
+              <button
+                type="button"
+                onClick={() => notice.noteFor && openNote(notice.noteFor)}
+              >
+                Add a note
+              </button>
+            )}
+          </>
+        )
+      )}
+    </div>
+  ) : null;
 
   return (
     <>
