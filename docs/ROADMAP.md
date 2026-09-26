@@ -20,40 +20,25 @@ not check is worse than an unticked one, because next session it gets skipped.
 
 Kept current at the end of every session. Read this first; it is the handoff.
 
-**Last updated: 2026-09-26 — Slice 11 (highlights + notes) built, reviewed, migrated and pushed; Ishank's browser check is next.**
+**Last updated: 2026-09-26 — Slice 11 (highlights + notes) done and hand-checked; next is Slice 12, the Trash view.**
 
-- **Slice 11 is deployed with migration 0010 applied and verified live.**
-  Seven of thirteen boxes are ticked with evidence. Five of the six open
-  ones need a signed-in page and wait on the click-list below; the sixth,
-  the "not found" panel entry, cannot happen until the sanitiser or
-  `toPlainText` changes. A reviewer
-  workflow found six UI edge-case bugs, and all six are fixed. Typecheck,
-  lint, 691 tests and `next build` pass.
-- **What Ishank must check by hand (about 10 minutes, Chrome, then a
-  phone).** Open any ready article from /inbox.
-  1. The toolbar shows **✎** next to **Aa**.
-  2. Select a sentence. A dark **Highlight** bar appears at the bottom.
-     Click it: the sentence is painted, and the bar says "Highlighted." with
-     **Add a note**.
-  3. Click **Add a note**, type something, press **Save note**. It says
-     "Note saved." and the highlight gets a dotted underline.
-  4. Reload. The highlight is still painted and ✎ shows 1.
-  5. Triple-click the **last** paragraph. The Highlight bar appears. Press
-     **Escape**: the bar goes away and you stay on the article.
-  6. With nothing selected, click the painted highlight. The panel opens
-     with that entry marked.
-  7. Press **Copy link** in the panel and open the link in a new tab. The
-     page scrolls to that highlight, not to where you last stopped.
-  8. With the panel open, click **Aa**. The highlights panel closes.
-  9. Press **Delete** on the highlight with a note. It asks "Delete with
-     note?"; press again and the paint disappears.
-  10. In an article with an image, highlight a sentence after the image and
-      reload. The paint is on the same words.
-  11. On a phone: select text, tap **Highlight** at the bottom, and it
-      paints. Tap ✎ and the panel lists it.
-- **Next after the check:** Trash view, then the "From your backlog" strip,
-  listen mode, reading stats, Pocket/Instapaper import, and AI summary.
-  Migrations continue from **0011**.
+- **Slice 11 is deployed and done.** Migration 0010 is applied and verified
+  live. Ishank ran the click-list on 2026-09-26 and reported it all fine
+  ("sab thik hai"). Twelve of thirteen boxes are ticked. The open one is the
+  "not found" panel entry, which cannot occur until the sanitiser or
+  `toPlainText` changes. A reviewer workflow found six UI edge-case bugs
+  before the push, and all six were fixed. Typecheck, lint, 691 tests and
+  `next build` pass.
+- **Next: Slice 12, the Trash view.** Write it into this file (files, a
+  Done-when checklist and a Gotcha) and show it to Ishank before building.
+  What already exists: soft delete sets `items.deleted_at`, the daily purge
+  cron hard-deletes rows deleted more than 30 days ago
+  (`purge_deleted_items`), and re-saving a URL resurrects a deleted item
+  (Slice 1). Trash means a list of deleted items with Restore and
+  Delete-forever, and the delete copy should say how long an item waits.
+- **After Slice 12, in order:** the "From your backlog" strip, listen mode,
+  reading stats, Pocket/Instapaper import, and AI summary. Migrations
+  continue from **0011**.
 - **Still open from earlier:** Firefox with the rebuilt extension, and the
   Slice 6 browser checks further down.
 - **Working notes for the next agent:**
@@ -66,6 +51,16 @@ Kept current at the end of every session. Read this first; it is the handoff.
   - Signed-in pages cannot be opened by an agent; hand the click-list over.
     The public `/reader-preview` pages can stand in for anything that only
     needs the article DOM.
+  - A reviewer workflow costs a lot of Ishank's budget. Keep reviewers on
+    the diff.
+
+_Earlier on 2026-09-26 — the Slice 11 click-list Ishank ran:_ open a ready
+article; ✎ beside Aa; select, Highlight, paint; add and save a note (dotted
+underline); reload keeps it; triple-click the last paragraph offers
+Highlight and Escape dismisses it; clicking a painted highlight opens the
+panel; Copy link opens scrolled to it; Aa closes the panel; Delete with a
+note asks twice; a highlight after an image survives reload; phone select
+and panel.
 
 _Earlier on 2026-09-25 — Slices 9 and 10 done and hand-checked:_
 
@@ -1028,12 +1023,14 @@ written to it yet.
 
 ### Done when
 
-- [ ] Selecting text in a ready article offers **Highlight**. Saving it
+- [x] Selecting text in a ready article offers **Highlight**. Saving it
       stores `quote`, `start_offset`, `end_offset` and paints it at once.
       Left for Ishank's hand check: no agent can open a signed-in page. The
       pieces are tested (mapper, action, render), and a review found that a
       triple-click on the last paragraph ended outside the article and was
       refused; it is now clamped (`ae67dcd`).
+      Confirmed by Ishank on 2026-09-26 against the click-list in Where
+      things stand ("sab thik hai").
 - [x] Painting uses the CSS Custom Highlight API (`CSS.highlights` and
       `::highlight()`). The rendered article HTML is never mutated: no
       `<mark>`, no wrapped spans, no `innerHTML`.
@@ -1062,9 +1059,11 @@ written to it yet.
       `anchorQuote` is unit-tested. The "not found" entry has not been seen
       in a browser, and nothing can produce a lost highlight until the
       sanitiser or `toPlainText` changes.
-- [ ] A note can be added, edited and removed on any highlight, and a
+- [x] A note can be added, edited and removed on any highlight, and a
       highlight can be deleted.
-      Actions tested; the panel is in the hand check.
+      Actions tested.
+      Confirmed by Ishank on 2026-09-26 against the click-list in Where
+      things stand ("sab thik hai").
 - [x] 0010 caps lengths in SQL (quote at most 2,000 characters, note at most
       10,000) and narrows the column grants: sessions may insert only the
       content columns and may update only `note`. Verified live in a
@@ -1073,17 +1072,21 @@ written to it yet.
       2026-09-25, as the owner of the newest item: over-long quote and note
       23514; update of quote, of start_offset, and an insert naming `id` all
       42501; note update and delete succeed. Zero rows existed beforehand.
-- [ ] A **Highlights** panel in the reader toolbar lists every highlight in
+- [x] A **Highlights** panel in the reader toolbar lists every highlight in
       reading order with its note. Tapping a painted highlight opens it in
       the panel.
       Changed from "where `highlightsFromPoint` exists": taps are hit-tested
       against the ranges' boxes, which works on iPhone Safari too. Even the
-      pane's Chromium has no `highlightsFromPoint`. In the hand check.
-- [ ] `/read/[id]?h=<highlight id>` scrolls to that highlight and suppresses
+      pane's Chromium has no `highlightsFromPoint`.
+      Confirmed by Ishank on 2026-09-26 against the click-list in Where
+      things stand ("sab thik hai").
+- [x] `/read/[id]?h=<highlight id>` scrolls to that highlight and suppresses
       the saved-position restore. The panel's **Copy link** produces it.
       The page suppresses the restore only when it finds the quote in
       today's text, and ReaderSurface decides once, at open (both review
-      findings). In the hand check.
+      findings).
+      Confirmed by Ishank on 2026-09-26 against the click-list in Where
+      things stand ("sab thik hai").
 - [x] The public `/reader-preview` fixtures do not offer highlighting; they
       have no database.
       Render test: no Highlights control with `preview`, for a pending item,
@@ -1094,8 +1097,10 @@ written to it yet.
       oversize note; updates only `note`), and the migration text.
       691 tests pass, with typecheck, lint and `next build`.
 - [x] ARCHITECTURE section 7 describes highlights; SCHEMA.sql matches 0010.
-- [ ] Hand check by Ishank (click-list in Where things stand), in Chrome and on
+- [x] Hand check by Ishank (click-list in Where things stand), in Chrome and on
       a phone.
+      Confirmed by Ishank on 2026-09-26 against the click-list in Where
+      things stand ("sab thik hai").
 
 ### Gotcha
 
