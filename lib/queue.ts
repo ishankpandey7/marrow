@@ -16,6 +16,7 @@
 
 import { createHash, timingSafeEqual } from "node:crypto";
 
+import { PURGE_AFTER_DAYS } from "@/lib/constants";
 import { extractArticle, type ArticleMetadata } from "@/lib/extract";
 import { fetchPage, type FetchNote, type FetchOutcome } from "@/lib/fetcher";
 import type { FailReason } from "@/lib/types";
@@ -58,7 +59,7 @@ export const DRAIN_BUDGET_MS = 40_000;
 export const STALE_LOCK = "5 minutes";
 
 /** ARCHITECTURE section 10: soft-deleted items are hard-deleted after this. */
-export const PURGE_AFTER = "30 days";
+export const PURGE_AFTER = `${PURGE_AFTER_DAYS} days`;
 
 /**
  * Only these two are worth trying again. Every other reason in the taxonomy is

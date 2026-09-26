@@ -59,3 +59,12 @@ export const FAIL_REASON_COPY: Record<FailReason, FailReasonCopy> = {
     offerRetry: true,
   },
 };
+
+/**
+ * How long a deleted item waits in Trash before the daily purge deletes it
+ * for good. The purge's interval is derived from this, and so is every
+ * sentence that tells the reader how long they have, so the promise and the
+ * cron cannot drift apart. It lives here rather than in lib/queue.ts because
+ * that module pulls in node: built-ins and must never reach a client bundle.
+ */
+export const PURGE_AFTER_DAYS = 30;
