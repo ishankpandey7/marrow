@@ -200,7 +200,12 @@ describe("every action", () => {
 describe("the Trash code's privileges", () => {
   const root = fileURLToPath(new URL("..", import.meta.url));
   // Comments are stripped: the warnings about the purge name it on purpose.
-  const sources = ["app/(app)/trash/actions.ts", "lib/trash.ts"].map(
+  const sources = [
+    "app/(app)/trash/actions.ts",
+    "app/(app)/trash/page.tsx",
+    "components/trash-list.tsx",
+    "lib/trash.ts",
+  ].map(
     (file) =>
       [
         file,
@@ -218,4 +223,9 @@ describe("the Trash code's privileges", () => {
       expect(source).not.toMatch(/purge_deleted_items|purgeDeletedItems/);
     },
   );
+
+  it("keeps lib/queue.ts, and its node: imports, out of the client list", () => {
+    const list = sources.find(([file]) => file === "components/trash-list.tsx");
+    expect(list?.[1]).not.toMatch(/lib\/queue/);
+  });
 });

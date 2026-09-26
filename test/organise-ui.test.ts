@@ -303,6 +303,19 @@ describe("rendered triage reconciliation with offline action responses", () => {
       "Undo rejected",
     );
   });
+  it("says a delete went to Trash, for how long, and links there", async () => {
+    actions.mutate.mockReturnValueOnce(deferred().promise);
+    expect(
+      container.querySelector("a[href='/trash']")?.textContent?.trim(),
+    ).toBe("Trash");
+    await click(button("Delete"));
+    const panel = button("Undo delete").closest("[aria-live]");
+    expect(panel?.textContent).toContain("Moved 1 item to Trash");
+    expect(panel?.textContent).toContain(
+      "restore from Trash, which keeps items for 30 days.",
+    );
+    expect(panel?.querySelector("a[href='/trash']")).not.toBeNull();
+  });
   it("clears an Undo that the server settled with a notice, and shows the notice", async () => {
     actions.mutate
       .mockResolvedValueOnce({

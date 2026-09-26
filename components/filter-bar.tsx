@@ -11,6 +11,7 @@ import {
 import { loadLibrary, mutateLibrary } from "@/app/(app)/actions";
 import { SaveForm } from "@/components/save-form";
 import { TagInput } from "@/components/tag-input";
+import { PURGE_AFTER_DAYS } from "@/lib/constants";
 import {
   applyOptimistic,
   filterUrl,
@@ -430,9 +431,14 @@ export function OrganiseInbox({
       <div className="my-5 space-y-4">
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-xl font-medium">Your library</h1>
-          <button className={buttonClass} onClick={() => setHelp(true)}>
-            Shortcuts ?
-          </button>
+          <div className="flex gap-2">
+            <a href="/trash" className={buttonClass}>
+              Trash
+            </a>
+            <button className={buttonClass} onClick={() => setHelp(true)}>
+              Shortcuts ?
+            </button>
+          </div>
         </div>
         <FilterBar
           filters={filters}
@@ -556,8 +562,8 @@ export function OrganiseInbox({
               className="flex items-center justify-between gap-2 text-sm"
             >
               <span>
-                Delete · {record.ids.length} item
-                {record.ids.length === 1 ? "" : "s"}
+                Moved {record.ids.length} item
+                {record.ids.length === 1 ? "" : "s"} to Trash
               </span>
               <button
                 className={buttonClass}
@@ -580,7 +586,12 @@ export function OrganiseInbox({
             </div>
           ))}
           <p className="text-xs text-ink-faint">
-            Undo stays available while you keep this page open.
+            Undo stays available while you keep this page open. After that,
+            restore from{" "}
+            <a href="/trash" className="underline">
+              Trash
+            </a>
+            , which keeps items for {PURGE_AFTER_DAYS} days.
           </p>
         </div>
       )}
@@ -805,7 +816,7 @@ export function OrganiseInbox({
               ["Shift-click", "Select a range"],
               ["e", "Archive (unarchive in Archive)"],
               ["f", "Toggle favourite"],
-              ["#", "Delete with undo"],
+              ["#", "Move to Trash"],
               ["t", "Add tag"],
               ["/", "Find on this page"],
               ["?", "Show shortcuts"],
