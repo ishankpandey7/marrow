@@ -105,11 +105,14 @@ export async function deleteForever(input: unknown): Promise<TrashOutcome> {
           ? "Deleted forever."
           : `Deleted ${items(ids.length)} forever.`,
     };
+  // A row can be missing because it came back to life, or because another
+  // tab or the purge already deleted it. The reply cannot tell which, so it
+  // must not promise the row was kept.
   return {
     ok: true,
     message: `${data.length ? `Deleted ${items(data.length)} forever. ` : ""}${
       missed === 1 ? "One was" : `${missed} were`
-    } no longer in Trash, so ${missed === 1 ? "it was" : "they were"} kept.`,
+    } no longer in Trash: restored, saved again or already deleted forever.`,
   };
 }
 

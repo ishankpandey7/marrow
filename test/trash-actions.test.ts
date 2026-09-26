@@ -127,10 +127,16 @@ describe("deleteForever", () => {
     ]);
   });
 
-  it("keeps an item that was restored or re-saved after the page loaded, and says so", async () => {
+  it("reports a row that left Trash elsewhere without claiming it was kept", async () => {
+    // The row may have been restored or re-saved, or already deleted forever
+    // by another tab or the purge; the delete's reply cannot tell which.
     state.responses.push(success([{ id }]));
     expect((await deleteForever([id, other])).message).toBe(
-      "Deleted 1 item forever. One was no longer in Trash, so it was kept.",
+      "Deleted 1 item forever. One was no longer in Trash: restored, saved again or already deleted forever.",
+    );
+    state.responses.push(success([]));
+    expect((await deleteForever([id, other])).message).toBe(
+      "2 were no longer in Trash: restored, saved again or already deleted forever.",
     );
   });
 
