@@ -50,9 +50,9 @@ Kept current at the end of every session. Read this first; it is the handoff.
      outside closes it. Reopen and confirm: Trash is empty and the button
      is greyed out.
   8. Phone: `/trash` fits, the buttons wrap, the dialog fits the screen.
-- **Next: Slice 13, the "From your backlog" strip.** Write it into this file
-  (files, Done-when and Gotcha) and show it to Ishank before building. After
-  it, in order: listen mode, reading stats, Pocket/Instapaper import, and AI
+- **Next: Slice 13, the "From your backlog" strip.** It is written below
+  (files, Done-when and Gotcha) and was shown to Ishank on 2026-09-26; build
+  only after his ok. After it, in order: listen mode, reading stats, Pocket/Instapaper import, and AI
   summary. Migrations continue from **0012**.
 - **Still open from earlier:** Firefox with the rebuilt extension, and the
   Slice 6 browser checks further down. Two new Slice 8 boxes came out of
@@ -1308,6 +1308,116 @@ in another tab. Delete only rows that are still deleted, and bound Empty
 trash by the newest `deleted_at` the page read, so it never takes something
 the reader has not seen. Use the session client: `purge_deleted_items` looks
 like the right tool and would empty every user's trash.
+
+---
+
+## Slice 13 — "From your backlog" strip
+
+**Agent:** Claude Code. Needs the real database for 0012; the UI checks are
+Ishank's, because an agent cannot sign in.
+**Files:**
+- `supabase/migrations/0012_backlog_strip.sql` (new), `docs/SCHEMA.sql`
+- `lib/backlog.ts` (new: the rule's numbers, the week key, the "why" line)
+- `components/backlog-strip.tsx` (new), `components/backlog-actions.ts`
+  (new: Not now)
+- `app/(app)/inbox/page.tsx` (loads the strip in the default view only),
+  `components/filter-bar.tsx` (a slot under the save form, nothing else)
+- `lib/backlog.test.ts` (new), `test/backlog-actions.test.ts` (new),
+  `test/backlog-ui.test.ts` (new), `test/schema.test.ts`,
+  `test/organise-ui.test.ts`
+
+Design notes from the 2026-09-24 research and its critic, re-checked against
+the code and the live database on 2026-09-26. A read-it-later list becomes a
+graveyard: what was saved two weeks ago sinks below everything saved since.
+The strip brings three of those back to the top of the library.
+
+- **The rule is fixed and shown on the strip:** up to three ready articles,
+  saved at least 14 days ago, not archived, not in Trash, less than 90% read,
+  and not put off with **Not now**. `read_at` is never written until Slice
+  8, so `read_progress` is the only reading signal there is.
+- **Which three** is decided by ranking each candidate on a hash of the ISO
+  week and its own id. The pick is the same all week, on every reload and
+  device, and changes each Monday at 00:00 UTC (05:30 IST).
+- **ARCHITECTURE §1 rules out "recommendations or an algorithmic feed".**
+  This is not one: a fixed, disclosed rule over the reader's own saves, with
+  no behaviour tracking and no engagement ranking. §1 and §13 will say so,
+  so nobody later "improves" it into a feed.
+- **The pick runs in SQL.** PostgREST cannot order by a hash, and hashing in
+  JavaScript would fetch the whole backlog on every `/inbox` load, which the
+  Pocket import (a later slice) would make thousands of rows.
+- **Live on 2026-09-26:** 7 of the 12 ready items qualify at 14 days, so the
+  hand check will see a full strip.
+- **Agreed with Ishank on 2026-09-26:** Not now is in, and the review runs
+  three reviewers (roughly 5–6 lakh tokens) rather than five.
+
+### Done when
+
+- [ ] 0012 adds `items.resurface_after timestamptz` (null means never put
+      off) and `public.backlog_strip(p_week text)`, which returns up to
+      three rows (`id, url, title, site_name, created_at, reading_minutes,
+      read_progress`) ordered by `md5(p_week || id)`. It is SECURITY INVOKER
+      and filters by the rule only, so RLS confines it to the caller.
+      EXECUTE is revoked from public, anon and service_role (which bypasses
+      RLS) and granted to authenticated, as `search_items` is.
+- [ ] The 14 days and the 90% live once in `lib/backlog.ts`, and a test
+      fails if the migration's numbers drift from them.
+- [ ] Verified live in a rolled-back block, as the owner under
+      `authenticated`:
+      - it returns three of the qualifying items;
+      - the same week twice gives the same three, and another week gives a
+        different order;
+      - archiving an item outside the pick leaves the pick unchanged;
+      - Not now on a picked item replaces it with the next one;
+      - anon and service_role cannot execute it.
+- [ ] `/inbox` shows the strip only in the default view (Inbox, All, no tag,
+      page 1), between the save form and "Your library", and renders nothing
+      when no item qualifies.
+- [ ] Each entry links to `/read/<id>` and says why it is there, for
+      example "Saved 3 weeks ago · 12 min · 40% read", or "not started" at
+      zero. Never "unread" or "not opened": an article opened and left at
+      the top also reads 0, and nothing records opening. The strip states
+      its rule in one line.
+- [ ] **Not now** sets `resurface_after` 30 days ahead, only on the
+      reader's own item that is not in Trash, and the strip refills on the
+      revalidated render.
+- [ ] Triage in the list below keeps the strip honest. Archiving, deleting
+      or finishing a picked item removes it from the strip on the next
+      render, without a reload.
+- [ ] Tests:
+      - the ISO week key across a year boundary (2026-12-31 is 2026-W53;
+        2027-01-04 is 2027-W01);
+      - the "why" line (days and weeks, missing minutes, zero progress);
+      - the numbers matching the migration;
+      - the strip render (titles escaped, nothing when empty, default view
+        only);
+      - the Not now action (refuses a malformed id, writes only
+        `resurface_after`);
+      - the migration text.
+- [ ] ARCHITECTURE §1 (why this is not a feed), §7 (the strip) and §13;
+      SCHEMA.sql matches 0012.
+- [ ] Hand check by Ishank (click-list in Where things stand), in Chrome and
+      on a phone.
+
+Not in this slice: the weekly email digest (the research ranked it weak: it
+needs Resend, a sending domain and working server-side Sentry); writing
+`read_at` (Slice 8); a setting to turn the strip off.
+
+### Gotcha
+
+Stable means stable per item, not per list. Seeding one shuffle with the
+week and picking by index reshuffles all three whenever anything in the
+backlog changes: archive one unrelated article and the whole strip swaps.
+Rank every candidate by its own hash of the week and its id, and take the
+top three. Then the strip changes only when one of its own items leaves.
+
+Second: "unfinished" is a guess. `read_at` is never written, and a short
+article reports progress 1 the moment it is opened, so `read_progress` below
+0.9 is the only signal. It measures scrolling, not opening: an article
+opened and left at the top reads 0 too. The copy must not claim more than
+that: say "40% read" or "not started", never "unread" or "not opened". And
+keep the rule fixed and
+disclosed. It is the only thing that keeps this from being the feed §1 rules
+out.
 
 ---
 
