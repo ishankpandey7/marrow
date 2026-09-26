@@ -140,7 +140,52 @@ describe("offsets and DOM boundary points map both ways", () => {
     expect(selected?.quote).toBe("Caption with spaces After");
   });
 
-  it("refuses a selection that leaves the article", () => {
+  it("clamps a selection that runs past the article to the article's end", () => {
+    const root = rendered("<p>first</p><p>last one</p>");
+    const footer = root.ownerDocument.createElement("footer");
+    footer.textContent = "All read.";
+    root.ownerDocument.body.appendChild(footer);
+    const index = textIndex(root);
+    const last = Array.from(root.querySelectorAll("p"))[1];
+    // What Chromium reports for a triple-click on the last paragraph.
+    expect(
+      selectedText(index, {
+        startContainer: last.firstChild!,
+        startOffset: 0,
+        endContainer: footer,
+        endOffset: 0,
+      }),
+    ).toEqual({ start: 6, end: 14, quote: "last one" });
+  });
+
+  it("clamps a selection that starts above the article, and one that holds it through an ancestor", () => {
+    const root = rendered("<p>inside words</p>");
+    const heading = root.ownerDocument.createElement("h1");
+    heading.textContent = "Title";
+    root.ownerDocument.body.insertBefore(heading, root);
+    const index = textIndex(root);
+    const text = root.querySelector("p")!.firstChild!;
+    expect(
+      selectedText(index, {
+        startContainer: heading.firstChild!,
+        startOffset: 1,
+        endContainer: text,
+        endOffset: 6,
+      }),
+    ).toEqual({ start: 0, end: 6, quote: "inside" });
+    const parent = root.parentNode!;
+    const at = Array.prototype.indexOf.call(parent.childNodes, root);
+    expect(
+      selectedText(index, {
+        startContainer: parent,
+        startOffset: at,
+        endContainer: parent,
+        endOffset: at + 1,
+      }),
+    ).toEqual({ start: 0, end: 12, quote: "inside words" });
+  });
+
+  it("refuses a selection wholly outside the article", () => {
     const root = rendered("<p>inside</p>");
     const outside = root.ownerDocument.createElement("p");
     outside.textContent = "outside";
@@ -150,7 +195,7 @@ describe("offsets and DOM boundary points map both ways", () => {
       selectedText(index, {
         startContainer: outside.firstChild!,
         startOffset: 0,
-        endContainer: root.querySelector("p")!.firstChild!,
+        endContainer: outside.firstChild!,
         endOffset: 3,
       }),
     ).toBeNull();

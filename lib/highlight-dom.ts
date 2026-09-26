@@ -165,21 +165,61 @@ export interface Selected extends Span {
   quote: string;
 }
 
+// Node.compareDocumentPosition bits, spelled out: linkedom has no Node global.
+const DISCONNECTED = 1;
+const PRECEDING = 2;
+const FOLLOWING = 4;
+const CONTAINS = 8;
+
 /**
- * The text a selection covers, trimmed of the spaces at its ends. Null when
- * either end is outside the article or nothing but whitespace is selected.
+ * A boundary point outside the article, clamped to the article's nearer end:
+ * 0 before it, the text's length after it, null if it is not in the document.
+ */
+function edgePosition(index: TextIndex, node: Node, nodeOffset: number) {
+  let container = node;
+  let offset = nodeOffset;
+  // Compare the element holding a text node instead of the text node itself.
+  // It lies on the same side of the article, and linkedom (which the tests
+  // run on) misplaces text inside a preceding element as following.
+  if (container.nodeType !== 1 && container.parentNode) {
+    offset = Array.prototype.indexOf.call(
+      container.parentNode.childNodes,
+      container,
+    );
+    container = container.parentNode;
+  }
+  const relation = index.root.compareDocumentPosition(container);
+  if (relation & DISCONNECTED) return null;
+  if (relation & CONTAINS) {
+    // An ancestor of the article: the offset says which side of it the point is.
+    let child: Node = index.root;
+    while (child.parentNode && child.parentNode !== container)
+      child = child.parentNode;
+    const at = Array.prototype.indexOf.call(container.childNodes, child);
+    return offset <= at ? 0 : index.text.length;
+  }
+  if (relation & FOLLOWING) return index.text.length;
+  if (relation & PRECEDING) return 0;
+  return null;
+}
+
+/**
+ * The text a selection covers, trimmed of the spaces at its ends. An end
+ * outside the article is clamped to the article's edge: Chromium ends a
+ * triple-click on the last paragraph at the start of the footer, and drags
+ * overshoot. Null when nothing but whitespace of the article is selected,
+ * which includes a selection that misses the article altogether.
  */
 export function selectedText(
   index: TextIndex,
   points: BoundaryPoints,
 ): Selected | null {
-  if (
-    !index.root.contains(points.startContainer) ||
-    !index.root.contains(points.endContainer)
-  )
-    return null;
-  let start = textPosition(index, points.startContainer, points.startOffset);
-  let end = textPosition(index, points.endContainer, points.endOffset);
+  const position = (container: Node, offset: number) =>
+    index.root.contains(container)
+      ? textPosition(index, container, offset)
+      : edgePosition(index, container, offset);
+  let start = position(points.startContainer, points.startOffset);
+  let end = position(points.endContainer, points.endOffset);
   if (start === null || end === null) return null;
   while (start < end && index.text[start] === " ") start += 1;
   while (end > start && index.text[end - 1] === " ") end -= 1;
