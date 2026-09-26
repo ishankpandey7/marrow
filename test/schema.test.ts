@@ -10,6 +10,11 @@ import {
   SAVE_WINDOW_MS,
 } from "@/lib/rate-limit";
 import { NOTE_MAX, QUOTE_MAX } from "@/lib/highlights";
+import {
+  BACKLOG_FINISHED,
+  BACKLOG_MIN_AGE_DAYS,
+  BACKLOG_SIZE,
+} from "@/lib/backlog";
 
 /**
  * These tests enforce the schema invariants from ARCHITECTURE.md section 4
@@ -265,6 +270,59 @@ describe("the trash index (0011)", () => {
   it("keeps the cross-user purge index", () => {
     expect(schema).toContain("create index items_purge_idx");
   });
+});
+
+describe("the backlog strip (0012)", () => {
+  const migration = migrations.find((m) => m.name.startsWith("0012_"))?.sql;
+  const both = [
+    ["docs/SCHEMA.sql", schema],
+    ["0012", migration ?? ""],
+  ] as const;
+  const fn = (sql: string) =>
+    /create function public\.backlog_strip\(p_week text\)[\s\S]*?\$\$;/.exec(
+      sql,
+    )?.[0] ?? "";
+
+  it.each(both)("%s adds resurface_after to items", (_name, sql) => {
+    expect(sql).toMatch(/resurface_after\s+timestamptz/);
+  });
+
+  it.each(both)(
+    "%s uses the numbers lib/backlog.ts states on the strip",
+    (_name, sql) => {
+      const body = fn(sql);
+      expect(body).toContain(
+        `i.created_at <= now() - interval '${BACKLOG_MIN_AGE_DAYS} days'`,
+      );
+      expect(body).toContain(`i.read_progress < ${BACKLOG_FINISHED}`);
+      expect(body).toContain(`limit ${BACKLOG_SIZE};`);
+    },
+  );
+
+  it.each(both)(
+    "%s ranks each item on its own hash, and leaves the user to RLS",
+    (_name, sql) => {
+      const body = fn(sql);
+      expect(body).toContain("order by md5(p_week || ':' || i.id::text), i.id");
+      expect(body).toContain("security invoker");
+      expect(body).not.toContain("security definer");
+      expect(body).not.toMatch(/user_id|auth\.uid/);
+    },
+  );
+
+  it.each(both)(
+    "%s keeps it from anon and from the service role",
+    (_name, sql) => {
+      const revoke = sql.indexOf(
+        "revoke all on function public.backlog_strip(text)\n  from public, anon, service_role;",
+      );
+      const grant = sql.indexOf(
+        "grant execute on function public.backlog_strip(text) to authenticated;",
+      );
+      expect(revoke).toBeGreaterThan(-1);
+      expect(grant).toBeGreaterThan(revoke);
+    },
+  );
 });
 
 describe("dollar quoting in docs/SCHEMA.sql", () => {

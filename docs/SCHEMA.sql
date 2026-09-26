@@ -147,6 +147,8 @@ create table public.items (
   read_at         timestamptz,
   -- Soft delete. Purged for real after 30 days by /api/cron/purge.
   deleted_at      timestamptz,
+  -- "Not now" on the backlog strip (0012): hidden from it until then.
+  resurface_after timestamptz,
 
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now(),
@@ -1221,3 +1223,49 @@ grant insert (user_id, name, token_hash)
   on public.extension_tokens to authenticated;
 grant update (revoked_at) on public.extension_tokens to authenticated;
 grant all on table public.extension_tokens to service_role;
+
+-- ----------------------------------------------------------------------------
+-- backlog_strip — "From your backlog" on /inbox (Slice 13, 0012).
+--
+-- Up to three ready articles saved at least 14 days ago, not archived, not in
+-- Trash, less than 90% read, and not put off with Not now (resurface_after).
+-- The rule is fixed and shown on the strip: ARCHITECTURE section 1 rules out
+-- an algorithmic feed. lib/backlog.ts holds the same numbers.
+--
+-- Each candidate is ranked on its own hash of the week and its id, so the
+-- pick holds all week and changes only when one of its own items leaves.
+-- SECURITY INVOKER with no user filter: RLS confines it, as search_items.
+-- ----------------------------------------------------------------------------
+
+create function public.backlog_strip(p_week text)
+returns table (
+  id              uuid,
+  url             text,
+  title           text,
+  site_name       text,
+  created_at      timestamptz,
+  reading_minutes integer,
+  read_progress   real
+)
+language sql
+stable
+security invoker
+set search_path = public, pg_temp
+as $$
+  select i.id, i.url, i.title, i.site_name, i.created_at,
+         i.reading_minutes, i.read_progress
+    from public.items i
+   where i.status = 'ready'
+     and i.deleted_at is null
+     and i.archived_at is null
+     and i.created_at <= now() - interval '14 days'
+     and i.read_progress < 0.9
+     and (i.resurface_after is null or i.resurface_after <= now())
+   order by md5(p_week || ':' || i.id::text), i.id
+   limit 3;
+$$;
+
+-- service_role bypasses RLS and would get every user's backlog.
+revoke all on function public.backlog_strip(text)
+  from public, anon, service_role;
+grant execute on function public.backlog_strip(text) to authenticated;

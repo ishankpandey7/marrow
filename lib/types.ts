@@ -46,6 +46,7 @@ export interface Item {
   read_progress: number;
   read_at: string | null;
   deleted_at: string | null;
+  resurface_after: string | null;
   created_at: string;
   updated_at: string;
 }
