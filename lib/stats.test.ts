@@ -53,7 +53,17 @@ describe("week labels", () => {
     expect(weekLabel("2026-09-21", 1)).toBe("Last week");
     expect(weekLabel("2026-09-14", 2)).toBe("Week of 14 Sep");
     // A Monday at midnight UTC is still that Monday, not the Sunday before.
-    expect(weekLabel("2026-01-05", 5)).toBe("Week of 5 Jan");
+    // Checked west of UTC, where reading local fields would slip a day; in
+    // IST, where the tests usually run, that mistake would pass.
+    const zone = process.env.TZ;
+    process.env.TZ = "America/Los_Angeles";
+    try {
+      expect(new Date("2026-01-05T00:00:00Z").getDate()).toBe(4);
+      expect(weekLabel("2026-01-05", 5)).toBe("Week of 5 Jan");
+    } finally {
+      if (zone === undefined) delete process.env.TZ;
+      else process.env.TZ = zone;
+    }
   });
 });
 

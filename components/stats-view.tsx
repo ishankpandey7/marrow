@@ -111,7 +111,11 @@ export function StatsView({
                   <Bar value={week.finished} max={max} />
                 </td>
                 <td className="py-2 text-right tabular-nums">
-                  {week.minutes === null ? (
+                  {week.finished === 0 ? (
+                    // reading_stats has no minutes for a week with nothing
+                    // finished; that is none, not unknown.
+                    "0"
+                  ) : week.minutes === null ? (
                     <>
                       <span aria-hidden="true">—</span>
                       <span className="sr-only">not known</span>

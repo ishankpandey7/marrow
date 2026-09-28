@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import { StatsView } from "@/components/stats-view";
 import { createServerSupabase } from "@/lib/db/server";
-import { BACKLOG_FINISHED, BACKLOG_MIN_AGE_DAYS, isoWeek } from "@/lib/backlog";
+import { BACKLOG_MIN_AGE_DAYS, isoWeek } from "@/lib/backlog";
 import {
   STATS_WEEKS,
   statsWeeks,
@@ -39,10 +39,14 @@ async function loadStats(): Promise<View> {
     count(),
     count().is("archived_at", null),
     count().not("read_at", "is", null),
+    // Unfinished is "never stamped", the exact complement of Finished.
+    // read_progress is where the reader is now, and it falls again when a
+    // finished article is scrolled back up; counting it would put the same
+    // article under Finished and Backlog at once.
     count()
       .eq("status", "ready")
       .is("archived_at", null)
-      .lt("read_progress", BACKLOG_FINISHED)
+      .is("read_at", null)
       .lte(
         "created_at",
         new Date(now - BACKLOG_MIN_AGE_DAYS * DAY_MS).toISOString(),
