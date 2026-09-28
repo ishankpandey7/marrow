@@ -487,6 +487,12 @@ disappears.
   writes; a successful write clears it if it has not changed in the meantime.
   Closing a browser can interrupt a request, so the recovery value is restored
   on the next visit and synchronized as reading resumes.
+- `items.read_at` is the first time `read_progress` was written at 0.9 or
+  more, stamped by the `items_stamp_read_at` trigger (0014, 0015) and never
+  moved or cleared. It is a scroll, not a reading: a short article that fits
+  on the screen is finished when it opens. Rows finished before 2026-09-28
+  carry their `updated_at` of that day. The library's Read/Unread filter and
+  labels, and search's, read it.
 - `/read/[id]` reads the item, content and profile through the verified session
   client and RLS. The body is re-sanitized and converted to React elements only
   on the server. Only controls, progress and individual image loading are
@@ -593,9 +599,12 @@ disappears.
   `search_items`; EXECUTE is kept from anon and the service role. The
   minimum age is passed from `lib/backlog.ts`, so changing it is a code
   change.
-- `read_at` is never written until Slice 8, so "unfinished" means
-  `read_progress < 0.9`. That measures scrolling, not opening, so the copy
-  says "40% read" or "not started", never "unread".
+- The strip's "unfinished" is still `read_progress < 0.9`, written before
+  `read_at` existed. Since Slice 15 the two can disagree: at exactly 0.9
+  (a numeric literal against a real column), and for a finished article
+  scrolled back up. Recorded in Notes from the field, 2026-09-28; changing
+  the strip is Ishank's call. That measures scrolling, not opening, so the
+  copy says "40% read" or "not started", never "unread".
 - Not now sets `items.resurface_after` 30 days ahead through the session
   client; nothing else about the item changes. The item comes back at the
   first week start after that, so the strip says "about a month".
@@ -650,6 +659,26 @@ disappears.
   and `speechSynthesis` belongs to the window) and on `pagehide`. When the
   page is visible again and the engine has gone quiet or paused on its own,
   the control reads Resume.
+
+### Reading stats (Slice 15)
+
+- `/stats`, linked from the library's heading row, shows the last 12 ISO
+  weeks newest first: saved, finished, about how many minutes those
+  finished articles take to read, and highlights made. Above them, how many
+  items are in the library, finished in all, and the backlog (ready, not
+  archived, never finished, saved over 14 days ago). Backlog is `read_at`
+  null, the complement of Finished, not `read_progress < 0.9`: progress
+  falls again when a finished article is scrolled back up. Items in Trash,
+  and their highlights, count nowhere.
+- `public.reading_stats(p_week, p_weeks)` (0014) counts into a
+  `generate_series` of weeks, so an empty week is a row of zeros. Weeks are
+  Monday to Sunday in UTC, like the backlog strip, and `p_week` comes from
+  the server's clock. SECURITY INVOKER with no user filter; EXECUTE is kept
+  from anon and the service role. The totals are PostgREST `count` queries
+  under the same RLS, taken with one `now`.
+- The page states its rules: what "finished" means, that minutes are
+  estimates and not time spent, when weeks turn, and that dates before
+  2026-09-28 are approximate. No streaks, goals or badges (§1).
 
 ---
 
@@ -1012,3 +1041,10 @@ re-litigate. Date, decision, reason.
   stops in the background too, it turned out). Rather than settle
   them first, the queue is built so none of them matters: short
   utterances, Pause as cancel, a per-sentence tint.
+- **2026-09-28 — `read_at` is a first-finish stamp made by a trigger
+  (Slice 15).** Stats cannot count what nothing records. The stamp is taken
+  at 90%, the strip's line, the first time only, so a reread does not move
+  an old article into this week. A trigger rather than the server action,
+  so any path that writes progress stamps the same way in the same
+  statement. It compares against `0.9::real`: the column is real, and the
+  numeric literal made an article at exactly 90% unfinished.

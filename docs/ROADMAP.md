@@ -20,7 +20,37 @@ not check is worse than an unticked one, because next session it gets skipped.
 
 Kept current at the end of every session. Read this first; it is the handoff.
 
-**Last updated: 2026-09-28 — Slice 14 reopened after Ishank's Android checks; a second fix is pushed and waits for his re-check. Slice 15 (reading stats) is written and waits for his ok.**
+**Last updated: 2026-09-28 — Slice 15 (reading stats) built, reviewed and pushed; waiting on Ishank's hand check. Slice 14 still waits for his Android re-check.**
+
+- **Slice 15 is deployed; only the hand check is open.** Migrations 0014
+  and 0015 are applied and verified live in a rolled-back block. 0015 is a
+  fix the live check found: `read_progress` is real, and against the
+  numeric literal 0.9 an article at exactly 90% was not finished. Seven of
+  eight boxes are ticked. Three reviewers on the diff (about 3.1 lakh
+  tokens) found two real problems in the page, both fixed: Backlog counted
+  an article finished and then scrolled back up, and a week that finished
+  nothing showed "not known" minutes. Typecheck, lint, 915 tests and
+  `next build` pass.
+- **What Ishank checks by hand (about 3 minutes, signed in):**
+  1. `/inbox`: a **Stats** button beside Trash opens `/stats`.
+  2. The tiles and table match the live data on 2026-09-28: "Week of
+     7 Sep" shows 13 saved and 2 finished (the two backfilled articles),
+     "Last week" 7 saved and 1 highlight, "This week" zeros. The rules are
+     stated under the table.
+  3. Open an unfinished article and scroll to its end. Reload `/stats`:
+     "This week" shows 1 finished and its minutes, and Finished goes up by
+     one.
+  4. `/inbox`, filter **Read**: that article is there, labelled Read.
+  5. Scroll the same article back to the top, reload `/stats`: it is still
+     finished, and Backlog did not go up.
+  6. On the phone, `/stats` fits; the table may scroll sideways, and the
+     bars are hidden there.
+- **Waiting on Ishank's yes (earlier slice):** the backlog strip (Slice 13)
+  still calls an article unfinished while `read_progress < 0.9`, a numeric
+  comparison. So an article at exactly 90%, or one finished and scrolled
+  back up, is Read in the library and can still be on the strip. A
+  one-line migration (`read_at is null`) would align it; not done without
+  his agreement.
 
 - **Slice 14 is deployed but not done.** On Ishank's Android phone
   (Chrome), a speed or voice change took effect only at the next sentence,
@@ -59,11 +89,9 @@ Kept current at the end of every session. Read this first; it is the handoff.
   If 1 still waits for the next sentence, 350 ms is too short for that
   phone, or the cause is something else; the next step would be an event
   log on the preview page rather than another guess.
-- **Next: Slice 15, reading stats.** Written below on 2026-09-28 and
-  waiting for Ishank's ok, and two answers: may it take over Slice 8's
-  `read_at` box, and should 0014 backfill `read_at` for articles already
-  read to 90%? After it: Pocket/Instapaper import, then AI summary.
-  Migrations continue from **0014**.
+- **Next after Slice 15:** Pocket/Instapaper import, then AI summary.
+  Write each into this file and show it to Ishank before building.
+  Migrations continue from **0016**.
 - **Still open from earlier:** Firefox with the rebuilt extension, and the
   Slice 6 browser checks further down. Two new Slice 8 boxes came out of
   Slice 12: a fetch running when its item is deleted forever reports a
@@ -848,7 +876,9 @@ fast as they like. Test the 401 by actually calling it from outside.
       for this" when the on-page find comes up empty. The two search
       affordances currently have nothing joining them, and the first person to
       use search typed four full-text queries into the wrong box.
-- [ ] **`items.read_at` is never written by anything.** Found while verifying
+- [x] **`items.read_at` is never written by anything.** Moved to Slice 15
+      and done there on 2026-09-28: a trigger stamps the first finish at
+      90% (0014, 0015). Found while verifying
       Slice 5. The column is declared in 0001, three filters read it, the
       library row and the search result both render "Read"/"Unread" from it —
       and no code anywhere sets it. Not the reader, not a button, not a
@@ -1674,70 +1704,100 @@ on unmount keeps talking over the library.
 **Agent:** Claude Code. Needs the real database for 0014; the page is
 signed-in only, so the UI check is Ishank's.
 **Files:**
-- `supabase/migrations/0014_reading_stats.sql` (new), `docs/SCHEMA.sql`
-- `components/reader/actions.ts` (`saveReadingProgress` stamps `read_at`,
-  nothing else)
-- `lib/stats.ts` (new: week labels, the bar scale, the copy)
+- `supabase/migrations/0014_reading_stats.sql` (new),
+  `supabase/migrations/0015_read_at_real_compare.sql` (new, a fix found by
+  the live check), `docs/SCHEMA.sql`
+- `lib/stats.ts` (new: row validation, week labels, the bar scale, the
+  copy)
 - `app/(app)/stats/page.tsx` (new), `components/stats-view.tsx` (new)
 - `components/filter-bar.tsx` (a Stats link beside Trash, nothing else)
 - `lib/stats.test.ts` (new), `test/stats-page.test.ts` (new),
-  `test/reader-actions.test.ts`, `test/schema.test.ts`
+  `test/schema.test.ts`, `test/organise-ui.test.ts`
+
+Changed from the plan while building: `read_at` is stamped by a trigger,
+not by `saveReadingProgress`, so `components/reader/actions.ts` is
+untouched. A trigger stamps in the same statement as any progress write,
+whichever path makes it.
 
 Design notes, 2026-09-28, from the schema and the reader code.
 
-- **Stats need `read_at`, and nothing writes it.** That is an open Slice 8
-  box (found in Slice 5). Without it this page can count saves and
-  highlights, but never "finished". So this slice takes that box over,
-  with Ishank's agreement: the reader stamps `read_at` the first time an
-  article's progress reaches 90%, the same line the backlog strip uses for
-  "unfinished". The library's Read/Unread filter and labels start working
-  with no change of their own.
+- **Stats need `read_at`, and nothing wrote it.** That was an open Slice 8
+  box (found in Slice 5). Without it this page could count saves and
+  highlights, but never "finished". Ishank agreed on 2026-09-28 that this
+  slice takes the box over and backfills: `read_at` is stamped the first
+  time an article's progress reaches 90%, the same line the backlog strip
+  uses for "unfinished". The library's Read/Unread filter and labels start
+  working with no change of their own.
 - **What the page shows, and what it does not.** The last 12 weeks, one
   row each: saved, finished, about how many minutes those finished articles
   take to read, and highlights made. Above it: in the library now, finished
-  in all, and the backlog (ready, under 90%, saved over 14 days ago). No
+  in all, and the backlog (ready, never finished, saved over 14 days ago;
+  changed from "under 90%" by the review, see below). No
   streaks, goals, badges or comparisons. §1 rules out engagement ranking,
   and a streak is that aimed at the reader.
-- **One SQL function, SECURITY INVOKER.** `reading_stats(p_weeks)` builds
-  the weeks with `generate_series` and counts into them, so an empty week
-  is a zero and not a missing row. RLS confines it to the caller, as with
-  `backlog_strip`. Bars are plain CSS widths in a real `<table>`; no chart
-  library.
+- **One SQL function, SECURITY INVOKER.** `reading_stats(p_week, p_weeks)`
+  builds the weeks with `generate_series` and counts into them, so an empty
+  week is a zero and not a missing row. `p_week` comes from the server's
+  clock, as the strip's does. RLS confines it to the caller. Bars are plain
+  CSS widths in a real `<table>`; no chart library.
 - **Weeks run Monday to Sunday in UTC**, the same as the backlog strip
   (they turn at 05:30 IST on Monday), and the page says so. A per-reader
   time zone is out of scope.
 
 ### Done when
 
-- [ ] `saveReadingProgress` sets `read_at = now()` when the new progress is
-      at least 0.9 and `read_at` is still null, on the reader's own ready,
-      non-deleted item. Scrolling back never clears it and reading again
-      never moves it. The preview writes nothing, as before.
-- [ ] 0014 backfills `read_at` from `updated_at` for items already at 90%
-      or more, if Ishank agrees; the notes say those dates are approximate.
-      It adds `public.reading_stats(p_weeks int)` returning
+- [x] `read_at` is set to `now()` the first time an item's `read_progress`
+      is written at 0.9 or more, and only while it is null. Scrolling back
+      never clears it and reading again never moves it. The preview writes
+      nothing, as before.
+      Changed: a `before update of read_progress` trigger (0014), not the
+      server action. 0015 compares against `0.9::real` (see Gotcha).
+- [x] 0014 backfills `read_at` from `updated_at` for items already at 90%
+      or more; the page says those dates are approximate. It adds
+      `public.reading_stats(p_week text, p_weeks int)` returning
       `(week_start date, saved int, finished int, finished_minutes int,
-      highlights int)` for the last `p_weeks` weeks, 1 to 52. Items in
-      Trash are left out. EXECUTE is revoked from public, anon and
+      highlights int)` for up to 52 weeks. Items in Trash are left out, and
+      so are their highlights. EXECUTE is revoked from public, anon and
       service_role and granted to authenticated.
-- [ ] Verified live in a rolled-back block, as the owner under
+      Applied 2026-09-28. The backfills dated 2 of the 20 live items.
+- [x] Verified live in a rolled-back block, as the owner under
       `authenticated`: an empty week is a zero row; an item saved in one
       week and finished in another counts once in each; a trashed item
       counts nowhere; a stranger gets zeros; anon and service_role cannot
       execute it.
-- [ ] `/stats` shows the 12 weeks newest first, with the totals and the
+      2026-09-28, after 0015: 0.89 left `read_at` null, 0.9 stamped it,
+      0.2 afterwards kept it, a reread at 1.0 did not move a stamp from 40
+      days back; 12 rows with no null counts, 52 for `p_weeks` 99. The
+      trigger fires under `authenticated` although that role cannot
+      execute the trigger function. Before 0015 the same block showed 0.9
+      not stamping.
+- [x] `/stats` shows the 12 weeks newest first, with the totals and the
       backlog line above, and the rule for "finished" stated on the page
-      ("scrolled to 90%"). Minutes say "about", and an item with no reading
-      time adds nothing rather than zero minutes. The library's heading
-      row links to it.
-- [ ] With nothing saved yet, the page says so instead of drawing twelve
+      ("scrolled to 90%"). Minutes say "about", and a week whose finished
+      articles have no reading time shows "—", not zero. The library's
+      heading row links to it.
+      Loader and render tests. Left for Ishank's hand check: an agent
+      cannot sign in. The review found two things here, both fixed
+      (`66622b3`): Backlog counted `read_progress < 0.9`, which falls again
+      when a finished article is scrolled back up, so one article could be
+      under Finished and Backlog at once; it is now "`read_at` is null". And
+      a week that finished nothing showed its minutes as "not known"; it
+      shows 0.
+- [x] With nothing saved yet, the page says so instead of drawing twelve
       empty rows.
-- [ ] Tests: the `read_at` stamp (at 0.9, not at 0.89, never moved, never
-      cleared, not for someone else's item); week labels; the bar scale
-      (a zero week, a single week, one huge week); the page render (escaped
-      labels, the empty state, the Stats link); the migration text.
-- [ ] ARCHITECTURE §4 (what `read_at` means now), §7 (the stats page) and
-      §13; the Slice 8 `read_at` box points here. SCHEMA.sql matches 0014.
+      Render test.
+- [x] Tests: the `read_at` stamp (at 0.9, not at 0.89, never moved, never
+      cleared); week labels; the bar scale (a zero week, a single week, one
+      huge week); the page (the empty state, a failed load, the backlog's
+      filters, the Stats link); the migration text.
+      Changed: the stamp is SQL, so it was tested live (above) and its text
+      in `test/schema.test.ts`, not in an action test. "Not for someone
+      else's item" is RLS on the update, as before. 915 tests pass,
+      with typecheck, lint and `next build`.
+- [x] ARCHITECTURE §7 (what `read_at` means now, under Reader state, and
+      the stats page) and §13; the Slice 8 `read_at` box points here.
+      SCHEMA.sql matches 0014 and 0015. Changed from "§4": `read_progress`
+      is described in §7, so `read_at` went beside it.
 - [ ] Hand check by Ishank: finish one article, see it in this week's row
       and under Read in the library; the page on the phone.
 
@@ -1760,6 +1820,12 @@ articles".
 Third: count into a series, not from the rows. `group by` over items
 returns only the weeks that had something, and a chart built from it
 silently skips the empty weeks, which are the ones that matter.
+
+Fourth, found live: `read_progress` is `real`, and real 0.9 is 0.89999998.
+Compared with the literal `0.9`, which is numeric, Postgres works in double
+precision and an article at exactly 90% is not finished. The client rounds
+progress to four places, so 0.9 is a value it really writes. Compare with
+`0.9::real`.
 
 ---
 
@@ -2502,3 +2568,31 @@ inside this slice. The API acceptance box stays unticked.
   the sentence start; that works wherever the browser sends word
   `boundary` events (the pane's Chromium does), and falls back to the
   sentence start where it does not.
+
+### 2026-09-28 — Slice 15, reading stats
+
+- **`real` against a numeric literal is a double-precision comparison.**
+  `read_progress` is real; real 0.9 is 0.89999998; `read_progress >= 0.9`
+  promotes both sides to double and says no. The client writes exactly 0.9
+  (it rounds to four places), so an article at 90% was not finished until
+  0015 compared with `0.9::real`. The live check caught it; the migration
+  text looked right. PostgREST filters are not affected: `lt.0.9` arrives
+  untyped and takes the column's type.
+- **The same trap is in the backlog strip** (`read_progress < 0.9`, 0013),
+  so the strip calls an article at exactly 0.9 unfinished while
+  `read_at` calls it finished. Waiting on Ishank (Where things stand).
+- **`read_progress` is where the reader is, not how far they got.** It
+  falls when a finished article is scrolled back up. Anything that means
+  "finished" should read `read_at`, which never falls. The review caught
+  the stats page's Backlog count using progress.
+- **Backfill: 2 of 20 live items** had progress at 0.9 or more and no
+  `read_at`; both are dated in the week of 7 Sep from `updated_at`. 0015's
+  backfill found none at exactly 0.9. The touch trigger moved their
+  `updated_at` to the migration time.
+- **A trigger fires without EXECUTE on its function.** `stamp_read_at` is
+  revoked from `authenticated`, and an `authenticated` update of
+  `read_progress` still stamped. Only creating the trigger needs EXECUTE.
+- **The agent's Bash tool halves backslashes in heredocs.** A Python
+  heredoc meant to write a backslash and an n into a TypeScript string
+  wrote a real newline instead. Use the Edit tool for anything with
+  backslashes.
