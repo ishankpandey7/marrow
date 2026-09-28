@@ -20,17 +20,19 @@ not check is worse than an unticked one, because next session it gets skipped.
 
 Kept current at the end of every session. Read this first; it is the handoff.
 
-**Last updated: 2026-09-28 — Slice 14 (listen mode) built, reviewed and pushed; waiting on Ishank's phone check. Next is reading stats.**
+**Last updated: 2026-09-28 — Slice 14 (listen mode) done and hand-checked. Next is reading stats.**
 
-- **Slice 14 is deployed; only the hand check is open.** No migration and
-  no Supabase work. Ten of eleven boxes are ticked, most with a check in
+- **Slice 14 is deployed and done.** No migration and no Supabase work.
+  Ishank ran the click-list below on his Android phone and in Chrome on
+  2026-09-28 and reported it all fine; all eleven boxes are ticked, most
+  with a check in
   the pane's Chromium on the longform preview (sound muted). Three
   reviewers on the diff only (about 4.3 lakh tokens) found six small, real
   things: three tests that could not fail, a fake that leaked between
   tests, a sentence piece that was only "?", and a back link that shrank
   on a phone. All are fixed. Typecheck, lint, 882 tests and `next build`
   pass.
-- **What Ishank checks by hand (about 5 minutes).** Steps 1–6 on the
+- **The click-list Ishank ran.** Steps 1–6 on the
   Android phone in Chrome, with no sign-in:
   1. Open <https://marrow-bice.vercel.app/reader-preview/longform>. Tap the
      speaker button in the toolbar, then **Listen from here**. It reads the
@@ -50,8 +52,8 @@ Kept current at the end of every session. Read this first; it is the handoff.
      mid-article, then press Esc twice. The first closes the panel; the
      second goes to the library and the voice stops.
 
-  What happens at 4 and 5 settles the three unverified quirks; it goes
-  into Notes from the field.
+  "Fine" at step 4 means Android Chrome did not cut a sentence or stall
+  between them for a minute. What the lock at step 5 did was not reported.
 - **The iPhone limit stays.** Speech stops on lock on an iPhone; that is
   Safari, and only server-made audio avoids it (ARCHITECTURE §13,
   2026-09-28). The panel says so.
@@ -1612,10 +1614,12 @@ against the code on 2026-09-28.
       speech, a control on the preview, unmount cancels).
       882 tests pass, with typecheck, lint and `next build`.
 - [x] ARCHITECTURE §1 (why this is not a podcast), §7 (Listen) and §13.
-- [ ] Hand check by Ishank (click-list in Where things stand): the phone on
+- [x] Hand check by Ishank (click-list in Where things stand): the phone on
       `/reader-preview/longform`, then one signed-in article in Chrome. Which
       of the three quirks are real goes into Notes from the field.
-      Left for Ishank: an agent cannot sign in, and has no phone.
+      Confirmed by Ishank on 2026-09-28 on his Android phone and in Chrome
+      ("sab thik hai"). He reported the list as a whole, not what the lock
+      in step 5 did, so the notes record only what "fine" rules out.
 
 Not in this slice: server-made audio and playback with the screen locked;
 a per-word tint; tapping a sentence to start there; a keyboard shortcut;
@@ -2364,3 +2368,8 @@ inside this slice. The API acceptance box stays unticked.
   tags into text nodes. React warns that this can cause a hydration error;
   none was reported and the table renders. Worth a look in Slice 8, since
   publisher tables are full of such whitespace.
+- **Hand check, 2026-09-28.** Ishank ran all seven steps on his Android
+  phone and in desktop Chrome and reported them fine. So on Android Chrome
+  a minute of sentences played without a cut or a stall, Pause and skip
+  behaved, and the voice list filled. Whether speech survives a screen
+  lock there is still unrecorded.
