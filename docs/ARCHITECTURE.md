@@ -29,7 +29,11 @@ list of saved things is the product. Everything else serves it.
   (Slice 13) is not one: it applies a fixed rule, shown on the strip, to the
   reader's own saves, and ranks nothing by behaviour or engagement. Changing
   the rule means changing what the strip says it does.
-- PDFs, video, podcasts. URLs that resolve to HTML articles only.
+- PDFs, video, podcasts. URLs that resolve to HTML articles only. Listen
+  (Slice 14) is not a podcast: the device's own voices read the article
+  that is open, while the page is open. Nothing is recorded, stored or sent,
+  and it stops when an iPhone locks. Making audio on the server would change
+  that, and is a decision for this list, not a setting.
 - Mobile apps. The web app is a PWA and that is the whole mobile story.
 - Client-side extraction. Extraction is a server concern; see §5. Since
   Slice 10 the extension may send the page the reader already has open. That
@@ -603,6 +607,41 @@ disappears.
 - The strip renders inside the library's keyboard surface, so its keydowns
   stop at its wrapper; the triage shortcuts act only on the list.
 
+### Listen (Slice 14)
+
+- A speaker button in the reader toolbar reads the article aloud with the
+  browser's `speechSynthesis`: no server route, key, dependency or
+  migration. It appears after hydration, only for a readable article and
+  only where the browser has speech. It works on `/reader-preview` too.
+- What is spoken comes from the rendered page: the `h1`, then the article
+  through `textIndex` (`lib/highlight-dom.ts`), so the image placeholder and
+  `noscript` are never read. Every block element ends a sentence and `pre`
+  is skipped (`spokenSentences` in `lib/listen.ts`). Sentences come from
+  `Intl.Segmenter` in the article's `lang`, with a punctuation split where it
+  is missing. One over 200 UTF-16 units is split at a comma or a space.
+- One sentence per utterance (`components/reader/narrator.ts`). Pause
+  cancels and Resume speaks the sentence again from its start; skips move
+  one sentence. Every utterance carries a generation number, and events
+  from any but the newest are dropped, because a cancelled utterance
+  answers late: Chrome with an `interrupted` error, others with `end`. The
+  current utterance is held by reference.
+- Play starts at the first sentence whose box ends below the toolbar, or
+  from the top once the reader has finished. Everything up to `speak()`
+  runs inside the tap, which iPhone Safari requires.
+- The spoken sentence is painted with the `marrow-listen` Custom Highlight
+  and scrolled into view when it leaves the screen. The toolbar does not
+  auto-hide while Listen plays. Follow-along scrolling writes
+  `read_progress` through the usual throttled path.
+- Rate and voice live in localStorage under `reader:<scope>:listen`, per
+  device, not in `profiles.settings`: voices differ per device, and a rate
+  is relative to its voice. The voice is stored per primary language
+  subtag. With none stored, the utterance gets the article's `lang` and the
+  device picks its default voice.
+- Speech stops on unmount (Esc and Back to library are client navigations,
+  and `speechSynthesis` belongs to the window) and on `pagehide`. When the
+  page is visible again and the engine has gone quiet or paused on its own,
+  the control reads Resume.
+
 ---
 
 ## 8. Environment variables
@@ -954,3 +993,12 @@ re-litigate. Date, decision, reason.
   something else in the backlog changes. The review then found that a
   per-item rank is not enough: with `now()` in the conditions, items joined
   mid-week. 0013 measures from the week's start.
+- **2026-09-28 — Listen uses the device's voices and assumes the worst of
+  them (Slice 14).** Server-made audio would keep playing on a locked
+  iPhone, but it needs a paid TTS key, storage per article, and is a step
+  toward the podcasts §1 rules out. So speech stays on the device, and the
+  limit is said on the control. Three platform quirks were reported but not
+  verified: Chrome cutting long utterances, Android turning pause into
+  cancel with no word boundaries, iOS stopping on lock. Rather than settle
+  them first, the queue is built so none of them matters: short
+  utterances, Pause as cancel, a per-sentence tint.

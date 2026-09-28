@@ -20,70 +20,52 @@ not check is worse than an unticked one, because next session it gets skipped.
 
 Kept current at the end of every session. Read this first; it is the handoff.
 
-**Last updated: 2026-09-28 — Slice 13 (backlog strip) done and hand-checked. Next is Slice 14, listen mode.**
+**Last updated: 2026-09-28 — Slice 14 (listen mode) built, reviewed and pushed; waiting on Ishank's phone check. Next is reading stats.**
 
-- **Slice 13 is deployed and done.** Migrations 0012 and 0013 are applied
-  and verified live in rolled-back blocks. Ishank ran the click-list below
-  on 2026-09-28 and reported it all fine; all ten boxes are ticked. A three-reviewer workflow
-  found four real bugs, all fixed. The biggest was that the pick could
-  change mid-week; 0013 measures from the week's start. Typecheck, lint,
-  843 tests and `next build` pass.
-- **The strip has items now.** Read-only check on 2026-09-28: this week's
-  (2026-W40) pick is three articles saved on 9 and 10 Sep, all 0% read.
-  The week of 21 Sep had none, because the cut-off was 7 Sep.
-- **The click-list Ishank ran (reload, stable picks, views and keyboard
-  are covered by tests and the live check):**
-  1. `/inbox`: a "From your backlog" box between the save box and "Your
-     library", three articles, each like "Saved 2 weeks ago · 2 min · not
-     started", and the rule stated underneath.
-  2. **Not now** on one: "Hidden from the strip for about a month." appears
-     and the article leaves the box.
-  3. Archive another strip article from its row in the list below: it
-     leaves the box without a reload.
-  4. On the phone, the box fits and a long title wraps.
-- **Next: Slice 14, listen mode.** Written below (files, Done-when and
-  Gotcha) on 2026-09-28 and waiting for Ishank's ok before any code. After
-  it, in order: reading stats, Pocket/Instapaper import, and AI summary.
-  Migrations continue from **0014**; Slice 14 needs none.
-- **Research for Slice 14, from the 2026-09-24 idea review and its critic.**
-  It lived only in that chat, so it is kept here. File and line references
-  there predate Slice 11, so re-check them.
-  - What Ishank gets: a Listen control in the reader. It reads the article
-    aloud with the device's own voices (`speechSynthesis`), starting where
-    he is scrolled, at an adjustable rate, with pause, resume and
-    skip-sentence. The spoken sentence is tinted and the page follows it.
-    No dependency, no key, no migration: a rate preference fits
-    `profiles.settings` (merged like `settings.reader`), and the voice is
-    per device, so it belongs in localStorage.
-  - The limit to say up front: on an iPhone speech stops when the screen
-    locks or Safari goes to the background, so it is not a pocket podcast.
-    Server-made audio from a paid TTS API would fix that, but it adds a key,
-    cost and storage, and edges toward the "no podcasts" non-goal. Keep it
-    out.
-  - Unverified platform quirks. Chrome cuts long utterances after about
-    15 s, Android turns pause into cancel and sends no boundary events, and
-    iOS stops on lock. Treat these as a hypothesis for a five-minute phone
-    spike before building, not as fact.
-  - Speak from the rendered article, not `item_content.text`, which runs a
-    heading straight into the next paragraph with no pause. Slice 11's
-    `lib/highlight-dom.ts` and `lib/plain-text.ts` already read the DOM as
-    text, skipping the `.reader-image` placeholder and `noscript`. Painting
-    the current sentence can reuse the CSS Custom Highlight API the
-    highlights use. The page sends only `item_content.html` today.
-  - Traps in the reader: the toolbar auto-hides on downward scroll and
-    would hide Pause during follow-along. Esc navigates back, so speech must
-    be cancelled on unmount and `pagehide`. Follow-along scrolling writes
-    `read_progress` through the existing throttled path, which is fine now
-    but matters once Slice 8 decides what marks an item read. Many items
-    have `lang` null, so fall back to the default voice without claiming
-    none exists.
-  - Size: about one session. No Supabase CLI work; the checks that matter
-    are on Ishank's phone.
+- **Slice 14 is deployed; only the hand check is open.** No migration and
+  no Supabase work. Ten of eleven boxes are ticked, most with a check in
+  the pane's Chromium on the longform preview (sound muted). Three
+  reviewers on the diff only (about 4.3 lakh tokens) found six small, real
+  things: three tests that could not fail, a fake that leaked between
+  tests, a sentence piece that was only "?", and a back link that shrank
+  on a phone. All are fixed. Typecheck, lint, 882 tests and `next build`
+  pass.
+- **What Ishank checks by hand (about 5 minutes).** Steps 1–6 on the
+  Android phone in Chrome, with no sign-in:
+  1. Open <https://marrow-bice.vercel.app/reader-preview/longform>. Tap the
+     speaker button in the toolbar, then **Listen from here**. It reads the
+     title first, the spoken sentence is tinted, and the page follows it.
+  2. Tap ⏸ in the toolbar: the voice stops. ▶: the same sentence starts
+     again. In the panel, › skips exactly one sentence.
+  3. Speed **1.5×**: the next sentence is faster. **Voice** lists the
+     phone's voices; pick one and the next sentence uses it.
+  4. Leave it reading for a minute. It never stops mid-sentence or between
+     paragraphs.
+  5. Lock the screen for ten seconds and unlock. Note whether it kept
+     talking, and whether the button says Resume or Pause.
+  6. With ⏸ showing, the toolbar fits and ← is easy to tap. The panel fits
+     the screen. Try Aa → Page colour → Sepia and Light: the tint is
+     visible in each.
+  7. Desktop Chrome, signed in: open any article, Listen from here
+     mid-article, then press Esc twice. The first closes the panel; the
+     second goes to the library and the voice stops.
+
+  What happens at 4 and 5 settles the three unverified quirks; it goes
+  into Notes from the field.
+- **The iPhone limit stays.** Speech stops on lock on an iPhone; that is
+  Safari, and only server-made audio avoids it (ARCHITECTURE §13,
+  2026-09-28). The panel says so.
+- **Next: reading stats**, then Pocket/Instapaper import and AI summary.
+  Write each into this file and show it to Ishank before building.
+  Migrations continue from **0014**.
 - **Still open from earlier:** Firefox with the rebuilt extension, and the
   Slice 6 browser checks further down. Two new Slice 8 boxes came out of
   Slice 12: a fetch running when its item is deleted forever reports a
   false `server_error`, and the library's tag dialog closes on a click in
   its padding.
+  New from Slice 14: the dev console warns about whitespace text nodes
+  inside a `table` on the longform preview (see Notes from the field,
+  2026-09-28). Not fixed there: it is `ArticleBody`, an earlier slice.
 - **Working notes for the next agent:**
   - Supabase CLI: `npm-cache/_npx/aa8e5c70f9d8d161/node_modules/.bin/supabase`,
     called by full path with the DB URL read from `.env.local` and never
@@ -98,7 +80,15 @@ Kept current at the end of every session. Read this first; it is the handoff.
   - A reviewer workflow costs a lot of Ishank's budget: Slice 12's five
     reviewers and ten verifiers spent about 1.16M tokens and ran out his
     session limit; Slice 13's three reviewers and seven verifiers spent
-    about 660k. Keep reviewers on the diff and say the cost up front.
+    about 660k. Slice 14's three reviewers, with the findings verified
+    inline instead of by verifier agents, spent about 430k. Keep reviewers
+    on the diff and say the cost up front.
+
+_Earlier on 2026-09-28 — Slice 13 (backlog strip) done and hand-checked:_
+migrations 0012 and 0013 applied and verified live; Ishank ran the
+click-list (the strip on `/inbox`, Not now, archive from the list, the
+phone) and reported it all fine; all ten boxes ticked; four review
+findings fixed; 843 tests.
 
 _Earlier on 2026-09-26 — Slice 12 (Trash) done and hand-checked:_
 
@@ -1521,6 +1511,7 @@ matter are on Ishank's phone, and because Listen also works on the public
 - `components/reader/listen.tsx` (new: the toolbar control and its panel)
 - `components/reader/reader-surface.tsx` (mounts Listen for a readable
   article and keeps the toolbar shown while it plays, nothing else),
+  `components/reader/reader.tsx` (passes the article's `lang`),
   `app/globals.css`
 - `lib/listen.test.ts` (new), `test/narrator.test.ts` (new),
   `test/listen-ui.test.ts` (new)
@@ -1548,17 +1539,21 @@ against the code on 2026-09-28.
   Android turns pause into cancel and sends no word boundaries, iOS stops on
   lock. The design assumes all three: one sentence per utterance with a
   length cap; Pause is `cancel()` and Resume speaks the same sentence again
-  from its start; the tint moves per sentence on `start`, never per word on
-  `boundary`. The phone check then records which quirks are real, and
+  from its start; the tint moves per sentence when it is queued, never per
+  word on `boundary` (changed from "on `start`" while building: queueing is
+  one event fewer to depend on). The phone check then records which quirks are real, and
   nothing depends on the answer.
 
 ### Done when
 
-- [ ] A **Listen** control sits in the reader toolbar, before ✎ and Aa, on
+- [x] A **Listen** control sits in the reader toolbar, before ✎ and Aa, on
       `/read/[id]` and on the preview fixtures. It appears only for a
       readable article and only where `speechSynthesis` exists; the server
       render has none, so a browser without speech shows nothing broken.
-- [ ] Speech comes from the rendered page, not `item_content.text`: the
+      `test/listen-ui.test.ts` (none without speech or on the server; on a
+      readable surface, preview or not; none on a pending one). Seen in
+      the pane's Chromium on the longform preview.
+- [x] Speech comes from the rendered page, not `item_content.text`: the
       title, then the article through `textIndex` in `lib/highlight-dom.ts`,
       which already skips the image placeholder and `noscript`. Every block
       element ends a sentence, so a heading never runs into the paragraph
@@ -1566,40 +1561,61 @@ against the code on 2026-09-28.
       `Intl.Segmenter` in the article's `lang` (a punctuation split where it
       is missing), and one longer than 200 characters is split at a comma,
       else at a space.
-- [ ] **Play** starts at the first sentence below the toolbar, where the
+      `lib/listen.test.ts` runs the three article fixtures through
+      `ArticleBody`: every sentence is capped and maps back to exactly its
+      own text. In the pane, "Learning the same mile" was spoken on its own.
+- [x] **Play** starts at the first sentence below the toolbar, where the
       reader is scrolled. At the top of the page it starts with the title.
-- [ ] **Pause**, **Resume**, and skip back and forward one sentence. Pause
+      In the pane's Chromium on the longform preview: from the top the first utterance was the title;
+      scrolled to mid-article, the first sentence under the toolbar.
+- [x] **Pause**, **Resume**, and skip back and forward one sentence. Pause
       cancels and remembers the sentence; Resume speaks it again from its
       start. The last sentence ending leaves the control at "Listen again",
       not stuck on Pause.
-- [ ] The sentence being spoken is tinted with a `marrow-listen` Custom
+      Narrator and UI tests. In the pane: Pause spoke nothing more, Resume
+      repeated the sentence, › moved exactly one.
+- [x] The sentence being spoken is tinted with a `marrow-listen` Custom
       Highlight, readable in all four page colours, and scrolled into view
       when it leaves the screen. The toolbar does not auto-hide while Listen
       plays, so Pause stays reachable. Without `CSS.highlights`, speech and
       follow-along still work, untinted.
-- [ ] **Rate** 0.75, 1, 1.25, 1.5, 1.75 or 2 (default 1), applied from the
+      In the pane: the tint painted in the dark theme, and scrolling down
+      left `data-hidden="false"` while playing and hid the toolbar once
+      paused. The UI tests run without `CSS.highlights`. The other themes'
+      tint is for the hand check.
+- [x] **Rate** 0.75, 1, 1.25, 1.5, 1.75 or 2 (default 1), applied from the
       next sentence. **Voice**: the device's voices, those matching the
       article's `lang` first. With `lang` null or no match, the device
       default. An empty list while voices are still loading
       (`voiceschanged`) never reads as "no voices". Both are kept per
       device; damaged storage falls back to the defaults.
-- [ ] Speech stops on unmount (Esc, Back to library, client navigation), on
+      `lib/listen.test.ts` and the UI test (stored JSON, the next sentence's
+      rate and voice). The list itself is for the hand check on Android.
+- [x] Speech stops on unmount (Esc, Back to library, client navigation), on
       `pagehide`, and when the article changes. Back on a visible page after
       the system stopped speech (an iPhone lock), the control reads Resume,
       not Pause.
-- [ ] A cancelled utterance's late `end` or `error` never advances, speaks
+      UI test (unmount cancels, a late end is ignored) and narrator test
+      (`reconcile`). In the pane a client navigation stopped speech and
+      cleared the tint, and the first Esc closed the panel instead. No
+      iPhone to try the lock on; Android's behaviour goes in the notes.
+- [x] A cancelled utterance's late `end` or `error` never advances, speaks
       twice or flips the state (see Gotcha). Tested with a fake synth that
       fires them after the next sentence has started.
-- [ ] Tests: the sentence plan (block ends, headings, `pre` skipped, the
+      Also seen live: the pane's Chromium answers each cancel with an
+      `interrupted` error, and both were dropped.
+- [x] Tests: the sentence plan (block ends, headings, `pre` skipped, the
       cap, the `lang` fallback), where to start, the stored preference, the
       narrator (advance and finish, pause and resume on the same sentence,
       skip at both ends, late events after cancel, an error mid-sentence,
       a rate change), and the render (no control on the server or without
       speech, a control on the preview, unmount cancels).
-- [ ] ARCHITECTURE §1 (why this is not a podcast), §7 (Listen) and §13.
+      882 tests pass, with typecheck, lint and `next build`.
+- [x] ARCHITECTURE §1 (why this is not a podcast), §7 (Listen) and §13.
 - [ ] Hand check by Ishank (click-list in Where things stand): the phone on
       `/reader-preview/longform`, then one signed-in article in Chrome. Which
       of the three quirks are real goes into Notes from the field.
+      Left for Ishank: an agent cannot sign in, and has no phone.
 
 Not in this slice: server-made audio and playback with the screen locked;
 a per-word tint; tapping a sentence to start there; a keyboard shortcut;
@@ -2321,3 +2337,30 @@ inside this slice. The API acceptance box stays unticked.
   swallowing `?`, `/` and Escape (`0be061d`). A refuted "no test pins the
   rule's other conditions" was covered anyway when 0013's tests were
   written.
+
+### 2026-09-28 — Slice 14, listen mode
+
+- **Chromium answers `cancel()` with an `interrupted` error, not `end`.**
+  Seen in the desktop app's pane: every Pause and skip produced one late
+  `error: interrupted` from the cancelled utterance. The generation counter
+  dropped both kinds; a handler that treated errors as "stop" would have
+  shown a false problem message on every Pause.
+- **The pane's Chromium has five local Microsoft voices** (en-US, en-IN)
+  and fired `end` reliably for sentences of up to 200 characters. None of
+  the three reported quirks showed on desktop; the phone check is what
+  settles them.
+- **linkedom's window is a proxy over `globalThis`.** Anything assigned to
+  it (`Object.assign(window, {...})`) lands on the real global and survives
+  `vi.unstubAllGlobals()`. The Listen UI test passed only because its
+  "no speech" case ran first. Use `vi.stubGlobal`. linkedom's `Range` also
+  has no `setStart`, `setEnd` or `getBoundingClientRect`.
+- **A saved preview position changes where Listen starts.** The preview
+  restores the last scroll from localStorage, so a second visit started
+  mid-article, as designed. Scroll to the top to hear the title.
+- **Found, not fixed (earlier slice): whitespace inside tables.** On
+  `/reader-preview/longform` the dev console reports "whitespace text nodes
+  cannot be a child of `<table>`" (and `thead`, `tr`, `tbody`). It comes
+  from `ArticleBody` turning the sanitised HTML's whitespace between table
+  tags into text nodes. React warns that this can cause a hydration error;
+  none was reported and the table renders. Worth a look in Slice 8, since
+  publisher tables are full of such whitespace.
