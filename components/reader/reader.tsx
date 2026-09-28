@@ -50,6 +50,7 @@ export function Reader({
       readable={readable}
       preview={preview}
       restorePosition={!focusHighlight}
+      lang={item.lang}
       tools={
         readable && !preview && highlights ? (
           <Highlights

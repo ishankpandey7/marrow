@@ -635,10 +635,104 @@ main.reader > .reader-state {
   }
 }
 
+/* Listen (Slice 14) tints the sentence being spoken. A cool tone, so it
+   never reads as one of the reader's own (warm) highlights under it. */
+::highlight(marrow-listen) {
+  background-color: rgb(96 138 204 / 0.24);
+}
+.reader[data-theme="dark"] ::highlight(marrow-listen) {
+  background-color: rgb(132 168 228 / 0.3);
+}
+@media (prefers-color-scheme: dark) {
+  .reader[data-theme="system"] ::highlight(marrow-listen) {
+    background-color: rgb(132 168 228 / 0.3);
+  }
+}
+
 /* The panel hangs from the whole toolbar, not from its own button, so it can
    sit at the right edge on a phone without running off the left. */
-.reader-highlights {
+.reader-highlights,
+.reader-listen {
   position: static;
+}
+.reader-listen > summary,
+.reader-listen-toggle {
+  color: var(--reader-muted);
+}
+.reader-listen-toggle {
+  display: grid;
+  place-items: center;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 4px;
+  color: var(--reader-accent);
+}
+.reader-listen-toggle:hover {
+  background: var(--reader-raised);
+}
+.reader-listen-panel {
+  top: 64px;
+  right: max(12px, calc((100% - 1120px) / 2 + 24px));
+  width: min(360px, calc(100% - 24px));
+  max-height: calc(100dvh - 80px);
+}
+.reader-listen-controls {
+  display: flex;
+  gap: 6px;
+}
+.reader-listen-controls button {
+  min-width: 48px;
+  min-height: 44px;
+  font-size: 20px;
+  border: 1px solid var(--reader-line);
+  border-radius: 4px;
+}
+.reader-listen-controls .reader-listen-main {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+  border-color: var(--reader-accent);
+}
+.reader-listen-controls button:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+.reader-listen-problem {
+  min-height: 1.5em;
+  margin: 10px 0 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--reader-muted);
+}
+.reader-listen-rates button {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.reader-listen-voice {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.reader-listen-voice span {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--reader-muted);
+}
+.reader-listen-voice select {
+  width: 100%;
+  min-height: 44px;
+  padding-inline: 10px;
+  font-size: 14px;
+  color: var(--reader-ink);
+  background: var(--reader-paper);
+  border: 1px solid var(--reader-line);
+  border-radius: 4px;
+}
+.reader-listen-note {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--reader-muted);
 }
 .reader-highlights > summary {
   gap: 2px;
@@ -755,6 +849,17 @@ main.reader > .reader-state {
   }
   .reader-toolbar nav {
     padding-inline: 16px;
+    gap: 8px;
+  }
+  /* While Listen shows its Pause button the toolbar holds one control more;
+     the Library link keeps its name for screen readers but not its width. */
+  .reader-toolbar nav:has(.reader-listen-toggle) .reader-back span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
   .reader-heading {
     margin-bottom: 30px;

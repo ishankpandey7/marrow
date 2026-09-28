@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -18,6 +19,7 @@ import {
   type ReaderSettings,
 } from "@/lib/reading";
 import { saveReaderSettings, saveReadingProgress } from "./actions";
+import { Listen } from "./listen";
 
 const preferenceEvent = "reader-preferences-changed";
 function subscribe(callback: () => void) {
@@ -53,6 +55,7 @@ export function ReaderSurface({
   readable,
   preview = false,
   restorePosition = true,
+  lang = null,
   tools,
   children,
 }: {
@@ -65,6 +68,8 @@ export function ReaderSurface({
   preview?: boolean;
   /** False when a deep link names a highlight to scroll to instead. */
   restorePosition?: boolean;
+  /** The article's language, for the voice Listen reads it in. */
+  lang?: string | null;
   /** Extra toolbar controls, placed before the appearance menu. */
   tools?: ReactNode;
   children: ReactNode;
@@ -91,6 +96,12 @@ export function ReaderSurface({
   // Decided when the article opens. A later revalidation that no longer finds
   // the deep-linked highlight (it was deleted) must not replay the restore.
   const restoreOnOpen = useRef(restorePosition);
+  // Follow-along scrolls down, which would hide the toolbar and Pause with it.
+  const listening = useRef(false);
+  const listen = useCallback((playing: boolean) => {
+    listening.current = playing;
+    if (playing) setHidden(false);
+  }, []);
   let effectiveSettings = settings;
   if (raw) {
     try {
@@ -228,7 +239,11 @@ export function ReaderSurface({
       frame = requestAnimationFrame(() => {
         frame = 0;
         const current = window.scrollY;
-        if (!options.current?.open && Math.abs(current - lastScroll) > 3)
+        if (
+          !options.current?.open &&
+          !listening.current &&
+          Math.abs(current - lastScroll) > 3
+        )
           setHidden(current > lastScroll && current > 120);
         lastScroll = current;
         record();
@@ -334,6 +349,13 @@ export function ReaderSurface({
               {Math.round(progress * 100)}
               <span>%</span>
             </span>
+          )}
+          {readable && (
+            <Listen
+              storageKey={`reader:${storageScope}:listen`}
+              lang={lang}
+              onPlayingChange={listen}
+            />
           )}
           {tools}
           <details
