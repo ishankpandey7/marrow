@@ -350,6 +350,79 @@ describe("the backlog strip (0012, 0013)", () => {
   );
 });
 
+describe("read_at and reading stats (0014, 0015)", () => {
+  const find = (prefix: string) =>
+    migrations.find((m) => m.name.startsWith(prefix))?.sql ?? "";
+  const stamp = (sql: string) =>
+    /create (?:or replace )?function public\.stamp_read_at\(\)[\s\S]*?\$\$;/.exec(
+      sql,
+    )?.[0] ?? "";
+  const stats = (sql: string) =>
+    /create function public\.reading_stats\(p_week text, p_weeks integer\)[\s\S]*?\$\$;/.exec(
+      sql,
+    )?.[0] ?? "";
+
+  it.each([
+    ["docs/SCHEMA.sql", schema],
+    ["0015", find("0015_")],
+  ])(
+    "%s stamps the first finish only, comparing as real at the strip's line",
+    (_name, sql) => {
+      const body = stamp(sql);
+      expect(body).toContain("old.read_at is null");
+      expect(body).toContain("new.read_at is null");
+      // real 0.9 is 0.89999998: a numeric 0.9 would miss an article at 90%.
+      expect(body).toContain(`new.read_progress >= ${BACKLOG_FINISHED}::real`);
+      expect(body).toContain("new.read_at := now();");
+    },
+  );
+
+  it.each([
+    ["docs/SCHEMA.sql", schema],
+    ["0014", find("0014_")],
+  ])("%s fires only when progress is written", (_name, sql) => {
+    expect(sql).toContain(
+      "create trigger items_stamp_read_at\n  before update of read_progress on public.items\n  for each row execute function public.stamp_read_at();",
+    );
+  });
+
+  it("backfills articles already read, as real the second time", () => {
+    expect(find("0014_")).toContain("set read_at = updated_at");
+    expect(find("0015_")).toContain("and read_progress >= 0.9::real;");
+  });
+
+  it.each([
+    ["docs/SCHEMA.sql", schema],
+    ["0014", find("0014_")],
+  ])(
+    "%s counts into a series of weeks, leaves Trash out and the user to RLS",
+    (_name, sql) => {
+      const body = stats(sql);
+      expect(body).toContain(
+        "from generate_series(0, least(greatest(p_weeks, 1), 52) - 1) as g",
+      );
+      expect(body).toContain("from weeks w");
+      expect(body.match(/i\.deleted_at is null/g)).toHaveLength(3);
+      expect(body).toContain("security invoker");
+      expect(body).not.toMatch(/user_id|auth\.uid|now\(\)|security definer/);
+    },
+  );
+
+  it.each([
+    ["docs/SCHEMA.sql", schema],
+    ["0014", find("0014_")],
+  ])("%s keeps the stats from anon and the service role", (_name, sql) => {
+    const revoke = sql.indexOf(
+      "revoke all on function public.reading_stats(text, integer)\n  from public, anon, service_role;",
+    );
+    const grant = sql.indexOf(
+      "grant execute on function public.reading_stats(text, integer) to authenticated;",
+    );
+    expect(revoke).toBeGreaterThan(-1);
+    expect(grant).toBeGreaterThan(revoke);
+  });
+});
+
 describe("dollar quoting in docs/SCHEMA.sql", () => {
   // SETUP.md builds a fresh project by pasting this whole file, and one bad
   // quote makes Postgres reject all of it. A single `$` once slipped in when

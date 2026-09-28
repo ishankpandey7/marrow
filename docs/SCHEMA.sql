@@ -144,6 +144,9 @@ create table public.items (
   -- 0..1. Written by the reader view as you scroll.
   read_progress   real not null default 0
                     check (read_progress >= 0 and read_progress <= 1),
+  -- The first time read_progress reached 0.9, stamped by the trigger below
+  -- (0014, 0015) and never moved after. Rows finished before 0014 carry
+  -- their updated_at of that day instead.
   read_at         timestamptz,
   -- Soft delete. Purged for real after 30 days by /api/cron/purge.
   deleted_at      timestamptz,
@@ -168,6 +171,32 @@ create table public.items (
 create trigger items_touch_updated_at
   before update on public.items
   for each row execute function public.touch_updated_at();
+
+-- read_at is a first-finish stamp (0014; 0015 compares as real, because real
+-- 0.9 is 0.89999998 and lost to the numeric literal). A trigger, so every
+-- path that writes progress stamps the same way, in the same statement.
+create function public.stamp_read_at()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  -- Only the first finish. Reopening an article from March must not move
+  -- it into this week, and scrolling back up must not unfinish it.
+  if old.read_at is null
+     and new.read_at is null
+     and new.read_progress >= 0.9::real then
+    new.read_at := now();
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function public.stamp_read_at() from public, anon, authenticated;
+
+create trigger items_stamp_read_at
+  before update of read_progress on public.items
+  for each row execute function public.stamp_read_at();
 
 -- Dedupe. Note what is NOT here: a "where deleted_at is null" clause. The
 -- uniqueness spans deleted and archived rows on purpose, so re-saving a URL you
@@ -1277,3 +1306,79 @@ $$;
 revoke all on function public.backlog_strip(text, integer)
   from public, anon, service_role;
 grant execute on function public.backlog_strip(text, integer) to authenticated;
+
+-- ----------------------------------------------------------------------------
+-- Reading stats (0014): the last p_weeks ISO weeks up to p_week, newest first.
+--
+-- The weeks come from generate_series and everything is counted into them,
+-- so an empty week is a row of zeros, not a missing row. Items in Trash
+-- count nowhere, nor do their highlights. p_week comes from the server's
+-- clock, as backlog_strip's does. SECURITY INVOKER with no user filter: RLS
+-- confines every count to the caller.
+-- ----------------------------------------------------------------------------
+
+create function public.reading_stats(p_week text, p_weeks integer)
+returns table (
+  week_start       date,
+  saved            integer,
+  finished         integer,
+  finished_minutes integer,
+  highlights       integer
+)
+language sql
+stable
+security invoker
+set search_path = public, pg_temp
+as $$
+  with weeks as (
+    select (to_date(p_week, 'IYYY-"W"IW') - 7 * g)::date as week_start
+      from generate_series(0, least(greatest(p_weeks, 1), 52) - 1) as g
+  ),
+  span as (
+    select min(week_start)::timestamp at time zone 'UTC' as starts from weeks
+  ),
+  saved as (
+    select date_trunc('week', i.created_at at time zone 'UTC')::date
+             as week_start,
+           count(*)::integer as n
+      from public.items i, span
+     where i.deleted_at is null
+       and i.created_at >= span.starts
+     group by 1
+  ),
+  finished as (
+    select date_trunc('week', i.read_at at time zone 'UTC')::date
+             as week_start,
+           count(*)::integer as n,
+           -- Null when none of them has a reading time: unknown, not zero.
+           sum(i.reading_minutes)::integer as minutes
+      from public.items i, span
+     where i.deleted_at is null
+       and i.read_at >= span.starts
+     group by 1
+  ),
+  marked as (
+    select date_trunc('week', h.created_at at time zone 'UTC')::date
+             as week_start,
+           count(*)::integer as n
+      from public.highlights h
+      join public.items i on i.id = h.item_id, span
+     where i.deleted_at is null
+       and h.created_at >= span.starts
+     group by 1
+  )
+  select w.week_start,
+         coalesce(s.n, 0),
+         coalesce(f.n, 0),
+         f.minutes,
+         coalesce(m.n, 0)
+    from weeks w
+    left join saved s on s.week_start = w.week_start
+    left join finished f on f.week_start = w.week_start
+    left join marked m on m.week_start = w.week_start
+   order by w.week_start desc;
+$$;
+
+revoke all on function public.reading_stats(text, integer)
+  from public, anon, service_role;
+grant execute on function public.reading_stats(text, integer) to authenticated;
