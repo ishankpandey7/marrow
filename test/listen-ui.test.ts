@@ -60,18 +60,10 @@ function install(withSpeech: boolean) {
     `<!doctype html><html><body>${PAGE}</body></html>`,
   );
   synth = fakeSynth();
-  if (withSpeech)
-    Object.assign(browser, {
-      speechSynthesis: synth,
-      SpeechSynthesisUtterance: FakeUtterance,
-    });
+  // linkedom's window reads and writes through to globalThis, so anything
+  // assigned to it would outlive the test. stubGlobal is undone afterwards.
+  if (withSpeech) vi.stubGlobal("speechSynthesis", synth);
   vi.stubGlobal("SpeechSynthesisUtterance", FakeUtterance);
-  Object.assign(browser, {
-    innerHeight: 800,
-    scrollY: 0,
-    scrollTo: vi.fn(),
-    matchMedia: () => ({ matches: false }),
-  });
   // linkedom lays nothing out; every box is at the top of the page.
   const box = () => ({ top: 0, bottom: 0, height: 0, width: 0 });
   // linkedom's Range has no setStart or setEnd either.
@@ -176,8 +168,10 @@ describe("the Listen control", () => {
     await render();
     await click(button("Listen from here"));
     const first = synth.spoken[0];
+    // Starting cancels anything left over, so count only what Pause does.
+    synth.cancel.mockClear();
     await click(button("Pause listening"));
-    expect(synth.cancel).toHaveBeenCalled();
+    expect(synth.cancel).toHaveBeenCalledOnce();
     expect(button("Resume")).toBeDefined();
     await act(async () => first.onend?.());
     expect(synth.spoken).toHaveLength(1);

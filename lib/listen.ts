@@ -138,8 +138,12 @@ export function sentencePlan(
         from + index,
         from + index + segment.length,
       );
-      if (sentence && SPEAKABLE.test(text.slice(sentence.start, sentence.end)))
-        plan.push(...capped(text, sentence));
+      if (sentence)
+        // Checked again per piece: a cut can leave a tail like French
+        // typography's " ?" that has nothing in it to say.
+        for (const piece of capped(text, sentence))
+          if (SPEAKABLE.test(text.slice(piece.start, piece.end)))
+            plan.push(piece);
     }
   }
   return plan;

@@ -66,8 +66,10 @@ describe("the narrator", () => {
     const { engine, narrator, view } = setup();
     narrator.play(SENTENCES, 0, OPTIONS);
     const first = engine.last();
+    // play() cancels too, so count from here.
+    const cancels = engine.cancels();
     narrator.pause();
-    expect(engine.cancels()).toBeGreaterThan(0);
+    expect(engine.cancels()).toBe(cancels + 1);
     expect(view()).toMatchObject({ status: "paused", index: 0 });
     // Chrome sends the cancelled utterance's end; Safari an interrupted error.
     first.events.end();
@@ -95,8 +97,8 @@ describe("the narrator", () => {
     const { engine, narrator, view } = setup();
     narrator.play(SENTENCES, 0, OPTIONS);
     narrator.skip(-1);
-    expect(engine.last().text).toBe("Zero.");
-    expect(view().index).toBe(0);
+    expect(engine.calls.map((c) => c.text)).toEqual(["Zero.", "Zero."]);
+    expect(view()).toMatchObject({ status: "playing", index: 0 });
     narrator.play(SENTENCES, 2, OPTIONS);
     const calls = engine.calls.length;
     narrator.skip(1);

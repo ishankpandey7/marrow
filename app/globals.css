@@ -853,6 +853,9 @@ main.reader > .reader-state {
   }
   /* While Listen shows its Pause button the toolbar holds one control more;
      the Library link keeps its name for screen readers but not its width. */
+  .reader-toolbar nav:has(.reader-listen-toggle) .reader-back {
+    min-width: 44px;
+  }
   .reader-toolbar nav:has(.reader-listen-toggle) .reader-back span {
     position: absolute;
     width: 1px;

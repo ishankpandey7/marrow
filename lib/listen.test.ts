@@ -118,6 +118,17 @@ describe("the sentences Listen reads", () => {
     expect(solid.slice(cut[1].start, cut[1].start + 2)).toBe("🐦");
   });
 
+  it("drops a piece the cap leaves with nothing to say", () => {
+    // French puts a space before "?"; here the cut falls right on it.
+    const french = `${"mot ".repeat(49)}fin ?`;
+    expect(french.length).toBe(SENTENCE_CAP + 1);
+    expect(
+      sentencePlan(french, [], [], "fr").map((s) =>
+        french.slice(s.start, s.end),
+      ),
+    ).toEqual([`${"mot ".repeat(49)}fin`]);
+  });
+
   it("survives a language tag the publisher got wrong", () => {
     expect(
       sentencePlan("One. Two.", [], [], "not a tag!!").map((s) => s.start),
