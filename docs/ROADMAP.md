@@ -20,20 +20,19 @@ not check is worse than an unticked one, because next session it gets skipped.
 
 Kept current at the end of every session. Read this first; it is the handoff.
 
-**Last updated: 2026-09-28 — Slice 13 (backlog strip) built, reviewed and pushed; waiting on Ishank's short hand check. Next is Slice 14, listen mode, in a new chat.**
+**Last updated: 2026-09-28 — Slice 13 (backlog strip) done and hand-checked. Next is Slice 14, listen mode.**
 
-- **Slice 13 is deployed; only the signed-in checks are open.** Migrations
-  0012 and 0013 are applied and verified live in rolled-back blocks. Seven
-  of ten boxes are ticked; the open three are the strip on `/inbox`, triage
-  keeping it honest, and Ishank's hand check. A three-reviewer workflow
+- **Slice 13 is deployed and done.** Migrations 0012 and 0013 are applied
+  and verified live in rolled-back blocks. Ishank ran the click-list below
+  on 2026-09-28 and reported it all fine; all ten boxes are ticked. A three-reviewer workflow
   found four real bugs, all fixed. The biggest was that the pick could
   change mid-week; 0013 measures from the week's start. Typecheck, lint,
   843 tests and `next build` pass.
 - **The strip has items now.** Read-only check on 2026-09-28: this week's
   (2026-W40) pick is three articles saved on 9 and 10 Sep, all 0% read.
   The week of 21 Sep had none, because the cut-off was 7 Sep.
-- **What Ishank checks by hand (about a minute; reload, stable picks,
-  views and keyboard are covered by tests and the live check):**
+- **The click-list Ishank ran (reload, stable picks, views and keyboard
+  are covered by tests and the live check):**
   1. `/inbox`: a "From your backlog" box between the save box and "Your
      library", three articles, each like "Saved 2 weeks ago · 2 min · not
      started", and the rule stated underneath.
@@ -1440,12 +1439,14 @@ The strip brings three of those back to the top of the library.
       gives the same three twice; an item that turns 14 days old mid-W40
       stays out of W40; Not now hides at once. W39 gives none, because the
       oldest save (9 Sep) is newer than 21 Sep minus 14 days.
-- [ ] `/inbox` shows the strip only in the default view (Inbox, All, no tag,
+- [x] `/inbox` shows the strip only in the default view (Inbox, All, no tag,
       page 1), between the save form and "Your library", and renders nothing
       when no item qualifies.
       Loader and slot tested (`test/inbox-page.test.ts`,
       `test/organise-ui.test.ts`). Left for Ishank's hand check. The strip
       has items from 28 Sep (checked read-only that day).
+      Confirmed by Ishank on 2026-09-28 against the click-list in Where
+      things stand ("baaki sab check list me thik hai").
 - [x] Each entry links to `/read/<id>` and says why it is there, for
       example "Saved 3 weeks ago · 12 min · 40% read", or "not started" at
       zero. Never "unread" or "not opened": an article opened and left at
@@ -1458,11 +1459,13 @@ The strip brings three of those back to the top of the library.
       Action test and the live checks. The review found that Not now on the
       last item dropped focus to `<body>`; the library heading now takes it
       (`0be061d`).
-- [ ] Triage in the list below keeps the strip honest. Archiving, deleting
+- [x] Triage in the list below keeps the strip honest. Archiving, deleting
       or finishing a picked item removes it from the strip on the next
       render, without a reload.
       Rests on `mutateLibrary`'s `revalidatePath('/inbox')`, which re-renders
       the page and so the strip. Left for Ishank's hand check.
+      Confirmed by Ishank on 2026-09-28 against the click-list in Where
+      things stand ("baaki sab check list me thik hai").
 - [x] Tests:
       - the ISO week key across a year boundary (2026-12-31 is 2026-W53;
         2027-01-04 is 2027-W01);
@@ -1477,8 +1480,10 @@ The strip brings three of those back to the top of the library.
 - [x] ARCHITECTURE §1 (why this is not a feed), §7 (the strip) and §13;
       SCHEMA.sql matches 0012.
       And 0013.
-- [ ] Hand check by Ishank (click-list in Where things stand), in Chrome and
+- [x] Hand check by Ishank (click-list in Where things stand), in Chrome and
       on a phone.
+      Confirmed by Ishank on 2026-09-28 against the click-list in Where
+      things stand ("baaki sab check list me thik hai").
 
 Not in this slice: the weekly email digest (the research ranked it weak: it
 needs Resend, a sending domain and working server-side Sentry); writing
