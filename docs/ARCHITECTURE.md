@@ -32,7 +32,8 @@ list of saved things is the product. Everything else serves it.
 - PDFs, video, podcasts. URLs that resolve to HTML articles only. Listen
   (Slice 14) is not a podcast: the device's own voices read the article
   that is open, while the page is open. Nothing is recorded, stored or sent,
-  and it stops when an iPhone locks. Making audio on the server would change
+  and it stops when a phone locks or the browser leaves the screen (iPhone
+  and Android alike). Making audio on the server would change
   that, and is a decision for this list, not a setting.
 - Mobile apps. The web app is a PWA and that is the whole mobile story.
 - Client-side extraction. Extraction is a server concern; see §5. Since
@@ -636,7 +637,11 @@ disappears.
   device, not in `profiles.settings`: voices differ per device, and a rate
   is relative to its voice. The voice is stored per primary language
   subtag. With none stored, the utterance gets the article's `lang` and the
-  device picks its default voice.
+  device picks its default voice. With one stored, the utterance takes that
+  voice's language rather than the article's, because Chrome on Android
+  picks the voice by language. A change of either restarts the current
+  sentence at once; one that waited for the next sentence was heard too
+  late to seem to work.
 - Speech stops on unmount (Esc and Back to library are client navigations,
   and `speechSynthesis` belongs to the window) and on `pagehide`. When the
   page is visible again and the engine has gone quiet or paused on its own,
@@ -999,6 +1004,7 @@ re-litigate. Date, decision, reason.
   toward the podcasts §1 rules out. So speech stays on the device, and the
   limit is said on the control. Three platform quirks were reported but not
   verified: Chrome cutting long utterances, Android turning pause into
-  cancel with no word boundaries, iOS stopping on lock. Rather than settle
+  cancel with no word boundaries, iOS stopping on lock (Android Chrome
+  stops in the background too, it turned out). Rather than settle
   them first, the queue is built so none of them matters: short
   utterances, Pause as cancel, a per-sentence tint.

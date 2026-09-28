@@ -20,43 +20,38 @@ not check is worse than an unticked one, because next session it gets skipped.
 
 Kept current at the end of every session. Read this first; it is the handoff.
 
-**Last updated: 2026-09-28 — Slice 14 (listen mode) done and hand-checked. Next is reading stats.**
+**Last updated: 2026-09-28 — Slice 14 reopened after Ishank's Android check; a fix is pushed and waits for his re-check. Slice 15 (reading stats) is written and waits for his ok.**
 
-- **Slice 14 is deployed and done.** No migration and no Supabase work.
-  Ishank ran the click-list below on his Android phone and in Chrome on
-  2026-09-28 and reported it all fine; all eleven boxes are ticked, most
-  with a check in
-  the pane's Chromium on the longform preview (sound muted). Three
-  reviewers on the diff only (about 4.3 lakh tokens) found six small, real
-  things: three tests that could not fail, a fake that leaked between
-  tests, a sentence piece that was only "?", and a back link that shrank
-  on a phone. All are fixed. Typecheck, lint, 882 tests and `next build`
-  pass.
-- **The click-list Ishank ran.** Steps 1–6 on the
-  Android phone in Chrome, with no sign-in:
-  1. Open <https://marrow-bice.vercel.app/reader-preview/longform>. Tap the
-     speaker button in the toolbar, then **Listen from here**. It reads the
-     title first, the spoken sentence is tinted, and the page follows it.
-  2. Tap ⏸ in the toolbar: the voice stops. ▶: the same sentence starts
-     again. In the panel, › skips exactly one sentence.
-  3. Speed **1.5×**: the next sentence is faster. **Voice** lists the
-     phone's voices; pick one and the next sentence uses it.
-  4. Leave it reading for a minute. It never stops mid-sentence or between
-     paragraphs.
-  5. Lock the screen for ten seconds and unlock. Note whether it kept
-     talking, and whether the button says Resume or Pause.
-  6. With ⏸ showing, the toolbar fits and ← is easy to tap. The panel fits
-     the screen. Try Aa → Page colour → Sepia and Light: the tint is
-     visible in each.
-  7. Desktop Chrome, signed in: open any article, Listen from here
-     mid-article, then press Esc twice. The first closes the panel; the
-     second goes to the library and the voice stops.
+- **Slice 14 is deployed but not done.** After a first "sab thik hai",
+  Ishank reported three things from his Android phone in Chrome:
+  1. Changing the **speed** did nothing he could hear.
+  2. Changing the **voice** did nothing.
+  3. Speech stops when the screen locks, and when Chrome goes to the home
+     screen.
+- **What changed for 1 and 2.** A speed or voice change used to apply from
+  the *next* sentence, five to ten seconds later. It now restarts the
+  current sentence with the new setting at once. With a voice chosen, the
+  utterance also takes that voice's language (en-IN, not the article's
+  "en"): Chrome on Android picks its voice by language, which is the
+  likely reason the choice was ignored. Checked in the pane's Chromium
+  (the restart and the language); Android itself is Ishank's re-check.
+  Typecheck, lint, 883 tests and `next build` pass. The fix was not put
+  through reviewer agents, to save budget; it is small and fully tested.
+- **3 is the platform, as for the iPhone.** Chrome on Android stops page
+  speech in the background too. Only server-made audio avoids it
+  (ARCHITECTURE §13, 2026-09-28). The panel now says "on a phone" instead
+  of "on an iPhone".
+- **What Ishank re-checks (two minutes, Android, no sign-in):**
+  1. <https://marrow-bice.vercel.app/reader-preview/longform>, speaker
+     button, **Listen from here**. While it reads, tap **1.5×**: the
+     sentence starts again, faster, straight away. Tap **0.75×**: slower.
+  2. Open **Voice** and pick an English voice with a different accent (for
+     example United Kingdom or India): the sentence starts again in it.
+  3. Go to the home screen and come back: the button reads Resume, and
+     Resume carries on from that sentence.
 
-  "Fine" at step 4 means Android Chrome did not cut a sentence or stall
-  between them for a minute. What the lock at step 5 did was not reported.
-- **The iPhone limit stays.** Speech stops on lock on an iPhone; that is
-  Safari, and only server-made audio avoids it (ARCHITECTURE §13,
-  2026-09-28). The panel says so.
+  If 1 or 2 still does nothing, Chrome on that phone ignores the setting
+  and the panel should stop offering it there.
 - **Next: Slice 15, reading stats.** Written below on 2026-09-28 and
   waiting for Ishank's ok, and two answers: may it take over Slice 8's
   `read_at` box, and should 0014 backfill `read_at` for articles already
@@ -1529,7 +1524,8 @@ against the code on 2026-09-28.
   toward §1's "no podcasts". It stays out.
 - **Say the limit on the control.** On an iPhone, speech stops when the
   screen locks or Safari leaves the foreground. The panel says so in one
-  line. This is not a pocket podcast.
+  line. This is not a pocket podcast. Ishank's Android Chrome stops the
+  same way (2026-09-28), so the line says "on a phone".
 - **Voice and rate stay on the device, in localStorage.** Changed from the
   research, which put the rate in `profiles.settings`. Voices differ per
   device and a rate is relative to the voice speaking it, so a synced rate
@@ -1587,14 +1583,19 @@ against the code on 2026-09-28.
       left `data-hidden="false"` while playing and hid the toolbar once
       paused. The UI tests run without `CSS.highlights`. The other themes'
       tint is for the hand check.
-- [x] **Rate** 0.75, 1, 1.25, 1.5, 1.75 or 2 (default 1), applied from the
-      next sentence. **Voice**: the device's voices, those matching the
+- [ ] **Rate** 0.75, 1, 1.25, 1.5, 1.75 or 2 (default 1), applied at
+      once: the current sentence starts again with it. **Voice**: the
+      device's voices, those matching the
       article's `lang` first. With `lang` null or no match, the device
       default. An empty list while voices are still loading
       (`voiceschanged`) never reads as "no voices". Both are kept per
       device; damaged storage falls back to the defaults.
-      `lib/listen.test.ts` and the UI test (stored JSON, the next sentence's
-      rate and voice). The list itself is for the hand check on Android.
+      `lib/listen.test.ts` and the UI test (stored JSON, the restarted
+      sentence's rate, voice and language).
+      Reopened 2026-09-28: on Ishank's Android neither change was heard.
+      Changed from "applied from the next sentence", and a chosen voice now
+      sets the utterance's language. Checked in the pane's Chromium;
+      waiting for his re-check on Android.
 - [x] Speech stops on unmount (Esc, Back to library, client navigation), on
       `pagehide`, and when the article changes. Back on a visible page after
       the system stopped speech (an iPhone lock), the control reads Resume,
@@ -1614,14 +1615,14 @@ against the code on 2026-09-28.
       skip at both ends, late events after cancel, an error mid-sentence,
       a rate change), and the render (no control on the server or without
       speech, a control on the preview, unmount cancels).
-      882 tests pass, with typecheck, lint and `next build`.
+      883 tests pass, with typecheck, lint and `next build`.
 - [x] ARCHITECTURE §1 (why this is not a podcast), §7 (Listen) and §13.
-- [x] Hand check by Ishank (click-list in Where things stand): the phone on
+- [ ] Hand check by Ishank (click-list in Where things stand): the phone on
       `/reader-preview/longform`, then one signed-in article in Chrome. Which
       of the three quirks are real goes into Notes from the field.
-      Confirmed by Ishank on 2026-09-28 on his Android phone and in Chrome
-      ("sab thik hai"). He reported the list as a whole, not what the lock
-      in step 5 did, so the notes record only what "fine" rules out.
+      Reopened 2026-09-28. The first "sab thik hai" was followed by three
+      failures on Android (speed, voice, background). The rest held. The
+      re-check list is in Where things stand.
 
 Not in this slice: server-made audio and playback with the screen locked;
 a per-word tint; tapping a sentence to start there; a keyboard shortcut;
@@ -2464,8 +2465,14 @@ inside this slice. The API acceptance box stays unticked.
   tags into text nodes. React warns that this can cause a hydration error;
   none was reported and the table renders. Worth a look in Slice 8, since
   publisher tables are full of such whitespace.
-- **Hand check, 2026-09-28.** Ishank ran all seven steps on his Android
-  phone and in desktop Chrome and reported them fine. So on Android Chrome
-  a minute of sentences played without a cut or a stall, Pause and skip
-  behaved, and the voice list filled. Whether speech survives a screen
-  lock there is still unrecorded.
+- **Hand check, 2026-09-28, corrected.** Ishank first reported the list
+  fine, then that on his Android phone (Chrome) a speed change and a voice
+  change did nothing, and speech stopped on a screen lock and on going to
+  the home screen. So of the reported quirks: stopping in the background
+  is real on Android as well as iOS; a cut after 15 s was not seen. Two
+  lessons. A setting that applies "from the next sentence" is heard five
+  to ten seconds late, which on a phone is indistinguishable from not at
+  all; it now restarts the sentence. And Chrome on Android chooses a voice
+  by language, so the utterance's `lang` has to be the chosen voice's.
+  Also: a ticked hand check deserves a question about each step that
+  settles something (here 4 and 5), not only a "fine" for the list.
