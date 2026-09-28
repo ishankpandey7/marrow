@@ -41,10 +41,10 @@ Kept current at the end of every session. Read this first; it is the handoff.
   3. Archive another strip article from its row in the list below: it
      leaves the box without a reload.
   4. On the phone, the box fits and a long title wraps.
-- **Next: Slice 14, listen mode, in a new chat.** Write it into this file
-  (files, Done-when and Gotcha) and show it to Ishank before building. Then,
-  in order: reading stats, Pocket/Instapaper import, and AI summary.
-  Migrations continue from **0014**.
+- **Next: Slice 14, listen mode.** Written below (files, Done-when and
+  Gotcha) on 2026-09-28 and waiting for Ishank's ok before any code. After
+  it, in order: reading stats, Pocket/Instapaper import, and AI summary.
+  Migrations continue from **0014**; Slice 14 needs none.
 - **Research for Slice 14, from the 2026-09-24 idea review and its critic.**
   It lived only in that chat, so it is kept here. File and line references
   there predate Slice 11, so re-check them.
@@ -1505,6 +1505,127 @@ that: say "40% read" or "not started", never "unread" or "not opened". And
 keep the rule fixed and
 disclosed. It is the only thing that keeps this from being the feed §1 rules
 out.
+
+---
+
+## Slice 14 — Listen mode
+
+**Agent:** Claude Code. No migration and no Supabase work. The checks that
+matter are on Ishank's phone, and because Listen also works on the public
+`/reader-preview` pages, most of them need no sign-in.
+**Files:**
+- `lib/listen.ts` (new: the sentence plan, the length cap, where to start,
+  the rate choices, the stored preference)
+- `components/reader/narrator.ts` (new: the speech queue, over an injected
+  `speechSynthesis` so it can be tested without a browser)
+- `components/reader/listen.tsx` (new: the toolbar control and its panel)
+- `components/reader/reader-surface.tsx` (mounts Listen for a readable
+  article and keeps the toolbar shown while it plays, nothing else),
+  `app/globals.css`
+- `lib/listen.test.ts` (new), `test/narrator.test.ts` (new),
+  `test/listen-ui.test.ts` (new)
+
+Design notes from the 2026-09-24 research and its critic, re-checked
+against the code on 2026-09-28.
+
+- **Device voices only.** `speechSynthesis`: no dependency, no key, no
+  server route, no migration. Server-made audio from a paid TTS API would
+  survive a locked screen, but it adds a key, cost and storage, and edges
+  toward §1's "no podcasts". It stays out.
+- **Say the limit on the control.** On an iPhone, speech stops when the
+  screen locks or Safari leaves the foreground. The panel says so in one
+  line. This is not a pocket podcast.
+- **Voice and rate stay on the device, in localStorage.** Changed from the
+  research, which put the rate in `profiles.settings`. Voices differ per
+  device and a rate is relative to the voice speaking it, so a synced rate
+  would be wrong on the other device anyway. It also keeps the slice free of
+  a new Server Action, and the preview behaves exactly like `/read`.
+- **Listen works on `/reader-preview` too.** It needs only the article DOM
+  and the device, and writes nothing anywhere. So the phone spike the
+  research asked for is Listen itself, on the public longform sample.
+- **Built for the worst case, so the quirks need not be true.** The research
+  lists three unverified ones: Chrome cuts an utterance after about 15 s,
+  Android turns pause into cancel and sends no word boundaries, iOS stops on
+  lock. The design assumes all three: one sentence per utterance with a
+  length cap; Pause is `cancel()` and Resume speaks the same sentence again
+  from its start; the tint moves per sentence on `start`, never per word on
+  `boundary`. The phone check then records which quirks are real, and
+  nothing depends on the answer.
+
+### Done when
+
+- [ ] A **Listen** control sits in the reader toolbar, before ✎ and Aa, on
+      `/read/[id]` and on the preview fixtures. It appears only for a
+      readable article and only where `speechSynthesis` exists; the server
+      render has none, so a browser without speech shows nothing broken.
+- [ ] Speech comes from the rendered page, not `item_content.text`: the
+      title, then the article through `textIndex` in `lib/highlight-dom.ts`,
+      which already skips the image placeholder and `noscript`. Every block
+      element ends a sentence, so a heading never runs into the paragraph
+      after it. Code blocks (`pre`) are skipped. Sentences come from
+      `Intl.Segmenter` in the article's `lang` (a punctuation split where it
+      is missing), and one longer than 200 characters is split at a comma,
+      else at a space.
+- [ ] **Play** starts at the first sentence below the toolbar, where the
+      reader is scrolled. At the top of the page it starts with the title.
+- [ ] **Pause**, **Resume**, and skip back and forward one sentence. Pause
+      cancels and remembers the sentence; Resume speaks it again from its
+      start. The last sentence ending leaves the control at "Listen again",
+      not stuck on Pause.
+- [ ] The sentence being spoken is tinted with a `marrow-listen` Custom
+      Highlight, readable in all four page colours, and scrolled into view
+      when it leaves the screen. The toolbar does not auto-hide while Listen
+      plays, so Pause stays reachable. Without `CSS.highlights`, speech and
+      follow-along still work, untinted.
+- [ ] **Rate** 0.75, 1, 1.25, 1.5, 1.75 or 2 (default 1), applied from the
+      next sentence. **Voice**: the device's voices, those matching the
+      article's `lang` first. With `lang` null or no match, the device
+      default. An empty list while voices are still loading
+      (`voiceschanged`) never reads as "no voices". Both are kept per
+      device; damaged storage falls back to the defaults.
+- [ ] Speech stops on unmount (Esc, Back to library, client navigation), on
+      `pagehide`, and when the article changes. Back on a visible page after
+      the system stopped speech (an iPhone lock), the control reads Resume,
+      not Pause.
+- [ ] A cancelled utterance's late `end` or `error` never advances, speaks
+      twice or flips the state (see Gotcha). Tested with a fake synth that
+      fires them after the next sentence has started.
+- [ ] Tests: the sentence plan (block ends, headings, `pre` skipped, the
+      cap, the `lang` fallback), where to start, the stored preference, the
+      narrator (advance and finish, pause and resume on the same sentence,
+      skip at both ends, late events after cancel, an error mid-sentence,
+      a rate change), and the render (no control on the server or without
+      speech, a control on the preview, unmount cancels).
+- [ ] ARCHITECTURE §1 (why this is not a podcast), §7 (Listen) and §13.
+- [ ] Hand check by Ishank (click-list in Where things stand): the phone on
+      `/reader-preview/longform`, then one signed-in article in Chrome. Which
+      of the three quirks are real goes into Notes from the field.
+
+Not in this slice: server-made audio and playback with the screen locked;
+a per-word tint; tapping a sentence to start there; a keyboard shortcut;
+holding follow-along back while the reader scrolls elsewhere; reading
+tables as tables (each cell is read as its own sentence).
+
+### Gotcha
+
+Every `cancel()` answers late. Pause, skip and stop all cancel the current
+utterance, and the browser then fires that utterance's `end` (Chrome) or an
+`error` of `interrupted` or `canceled` (Safari, Firefox), asynchronously,
+after the next sentence has already been queued. A handler that does "on
+end, speak the next one" turns Pause into "skip one and keep talking" and
+Skip into "skip two". Give every utterance a generation number and drop any
+event from one that is not current. Also hold a reference to the current
+utterance: Chrome has been known to drop the events of an utterance nothing
+references.
+
+Second: iPhone Safari speaks only from a user gesture. The first `speak()`
+has to run synchronously inside the tap handler, with no `await` for voices
+and no animation frame first. `getVoices()` is empty until `voiceschanged`
+on Chrome, so start with the default voice rather than waiting for the list.
+
+Third: `speechSynthesis` belongs to the window, not the component. Esc and
+Back to library are client navigations, so an article that is not cancelled
+on unmount keeps talking over the library.
 
 ---
 
