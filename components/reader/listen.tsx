@@ -201,6 +201,9 @@ export function Listen({
 
   function remember(next: ListenPreference) {
     setPreference(next);
+    // Inside the tap, not in the effect below: a restarted sentence is a
+    // new speak(), and iPhone Safari wants those to come from a gesture.
+    narratorRef.current?.configure(speechOptions(next, voices, lang));
     try {
       localStorage.setItem(storageKey, JSON.stringify(next));
     } catch {
@@ -376,7 +379,8 @@ export function Listen({
           </label>
           <p className="reader-listen-note">
             Read by your device&apos;s own voices; nothing is sent anywhere. On
-            an iPhone, speech stops when the screen locks.
+            a phone, speech stops when the screen locks or you leave the
+            browser.
           </p>
         </div>
       </details>

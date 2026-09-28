@@ -141,17 +141,35 @@ describe("the narrator", () => {
     expect(view().problem).toMatch(/could not read this sentence/);
   });
 
-  it("applies a new rate or voice from the next sentence", () => {
-    const { engine, narrator } = setup();
-    narrator.play(SENTENCES, 0, OPTIONS);
+  it("applies a new rate or voice at once, restarting the sentence", () => {
+    const { engine, narrator, view } = setup();
+    narrator.play(SENTENCES, 1, OPTIONS);
+    const before = engine.last();
+    const cancels = engine.cancels();
     narrator.configure({ rate: 1.5, lang: "en", voice: "Daniel" });
-    expect(engine.last().options.rate).toBe(1);
-    engine.last().events.end();
+    expect(engine.cancels()).toBe(cancels + 1);
+    expect(engine.calls.map((c) => c.text)).toEqual(["One.", "One."]);
     expect(engine.last().options).toEqual({
       rate: 1.5,
       lang: "en",
       voice: "Daniel",
     });
+    expect(view()).toMatchObject({ status: "playing", index: 1 });
+    // The restarted sentence's predecessor answers late, as ever.
+    before.events.end();
+    expect(engine.calls).toHaveLength(2);
+  });
+
+  it("does not restart for settings that did not change, or while paused", () => {
+    const { engine, narrator } = setup();
+    narrator.play(SENTENCES, 0, OPTIONS);
+    narrator.configure({ ...OPTIONS });
+    expect(engine.calls).toHaveLength(1);
+    narrator.pause();
+    narrator.configure({ ...OPTIONS, rate: 2 });
+    expect(engine.calls).toHaveLength(1);
+    narrator.resume();
+    expect(engine.last().options.rate).toBe(2);
   });
 
   it("stops for good: a late end does not start it again", () => {
@@ -203,12 +221,15 @@ describe("the browser engine", () => {
       spoken,
       speak: (utterance: FakeUtterance) => spoken.push(utterance),
       cancel: vi.fn(),
-      getVoices: () => [{ voiceURI: "Daniel" }, { voiceURI: "Lekha" }],
+      getVoices: () => [
+        { voiceURI: "Daniel", lang: "en-GB" },
+        { voiceURI: "Lekha", lang: "hi_IN" },
+      ],
     };
     return synth;
   }
 
-  it("sets rate, language and a voice the device has, and relays its events", () => {
+  it("sets rate and a voice the device has, in the voice's own language, and relays its events", () => {
     vi.stubGlobal("SpeechSynthesisUtterance", FakeUtterance);
     const synth = fakeSynth();
     const speech = browserSpeech(synth as unknown as SpeechSynthesis);
@@ -216,7 +237,7 @@ describe("the browser engine", () => {
     const error = vi.fn();
     speech.speak(
       "Hello.",
-      { rate: 1.25, lang: "hi", voice: "Lekha" },
+      { rate: 1.25, lang: "en", voice: "Lekha" },
       {
         end,
         error,
@@ -226,7 +247,9 @@ describe("the browser engine", () => {
     expect(utterance).toMatchObject({
       text: "Hello.",
       rate: 1.25,
-      lang: "hi",
+      // Not the article's "en": Android would read that with its default
+      // English voice. Its underscore is made a hyphen.
+      lang: "hi-IN",
       voice: { voiceURI: "Lekha" },
     });
     utterance.onend?.();
@@ -236,6 +259,8 @@ describe("the browser engine", () => {
 
     speech.speak("Hi.", { rate: 1, lang: null, voice: "Gone" }, { end, error });
     expect(synth.spoken[1]).toMatchObject({ lang: "", voice: null });
+    speech.speak("Hi.", { rate: 1, lang: "en", voice: null }, { end, error });
+    expect(synth.spoken[2]).toMatchObject({ lang: "en", voice: null });
   });
 
   it("counts a paused or silent engine as stalled", () => {

@@ -182,7 +182,7 @@ describe("the Listen control", () => {
     ]);
   });
 
-  it("keeps rate and voice on this device and uses them from the next sentence", async () => {
+  it("keeps rate and voice on this device and uses them at once", async () => {
     install(true);
     await render();
     const select = container.querySelector("select");
@@ -191,6 +191,11 @@ describe("the Listen control", () => {
     ).toEqual(["Device default", "Bee (en-US)", "Ay (hi-IN)"]);
     await click(button("Listen from here"));
     await click(button("1.5×"));
+    // The same sentence again, now faster: a change is heard straight away.
+    expect(synth.spoken.map((u) => [u.text, u.rate])).toEqual([
+      ["The headline", 1],
+      ["The headline", 1.5],
+    ]);
     await act(async () => {
       if (!select) return;
       // linkedom's select.value has no setter; it reads the selected option.
@@ -202,12 +207,16 @@ describe("the Listen control", () => {
       rate: 1.5,
       voices: { en: "en-1" },
     });
-    expect(synth.spoken[0].rate).toBe(1);
-    await act(async () => synth.spoken[0].onend?.());
-    expect(synth.spoken[1]).toMatchObject({
+    expect(synth.spoken).toHaveLength(3);
+    expect(synth.spoken[2]).toMatchObject({
+      text: "The headline",
       rate: 1.5,
+      lang: "en-US",
       voice: { voiceURI: "en-1" },
     });
+    // The effect that follows the same change must not restart it again.
+    await act(async () => undefined);
+    expect(synth.spoken).toHaveLength(3);
   });
 
   it("stops speaking when the article closes", async () => {

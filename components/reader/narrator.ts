@@ -48,7 +48,7 @@ export interface Narrator {
   pause(): void;
   resume(): void;
   skip(delta: -1 | 1): void;
-  /** Applies from the next sentence; the current one finishes as it began. */
+  /** Applies at once: a changed setting starts the current sentence again. */
   configure(options: SpeechOptions): void;
   stop(): void;
   /** Call when the page is visible again: the system may have stopped speech. */
@@ -150,7 +150,18 @@ export function createNarrator(
       }
     },
     configure(next) {
+      const changed =
+        next.rate !== options.rate ||
+        next.lang !== options.lang ||
+        next.voice !== options.voice;
       options = { ...next };
+      // Heard at once, not from the next sentence: sentences run for five
+      // or ten seconds, and a tap that changes nothing for that long reads
+      // as a tap that did nothing (Ishank's phone check, 2026-09-28).
+      if (changed && status === "playing") {
+        silence();
+        speakAt(index);
+      }
     },
     stop() {
       silence();
@@ -178,11 +189,17 @@ export function browserSpeech(synth: SpeechSynthesis): Speech {
     speak(text, options, events) {
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.rate = options.rate;
-      if (options.lang) utterance.lang = options.lang;
       const voice = options.voice
         ? synth.getVoices().find((each) => each.voiceURI === options.voice)
         : undefined;
-      if (voice) utterance.voice = voice;
+      if (voice) {
+        utterance.voice = voice;
+        // Chrome on Android picks the voice by language, so an utterance
+        // `lang` that differs from the chosen voice's (article "en", voice
+        // en-IN) is the likely reason a choice there was ignored on
+        // 2026-09-28. Android also reports en_US for en-US.
+        utterance.lang = voice.lang.replace(/_/g, "-");
+      } else if (options.lang) utterance.lang = options.lang;
       utterance.onend = () => {
         if (current === utterance) current = null;
         events.end();
