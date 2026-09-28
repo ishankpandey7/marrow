@@ -371,6 +371,9 @@ describe("rendered triage reconciliation with offline action responses", () => {
     expect(
       container.querySelector("a[href='/trash']")?.textContent?.trim(),
     ).toBe("Trash");
+    expect(
+      container.querySelector("a[href='/stats']")?.textContent?.trim(),
+    ).toBe("Stats");
     await click(button("Delete"));
     const panel = button("Undo delete").closest("[aria-live]");
     expect(panel?.textContent).toContain("Moved 1 item to Trash");

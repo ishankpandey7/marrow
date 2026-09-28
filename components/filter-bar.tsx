@@ -472,6 +472,9 @@ export function OrganiseInbox({
             Your library
           </h1>
           <div className="flex gap-2">
+            <a href="/stats" className={buttonClass}>
+              Stats
+            </a>
             <a href="/trash" className={buttonClass}>
               Trash
             </a>
