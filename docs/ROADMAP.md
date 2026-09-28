@@ -20,7 +20,7 @@ not check is worse than an unticked one, because next session it gets skipped.
 
 Kept current at the end of every session. Read this first; it is the handoff.
 
-**Last updated: 2026-09-26 — Slice 13 (backlog strip) built, reviewed and pushed; Ishank's hand check can start on Monday 28 Sep, 05:30 IST.**
+**Last updated: 2026-09-28 — Slice 13 (backlog strip) built, reviewed and pushed; waiting on Ishank's short hand check. Next is Slice 14, listen mode, in a new chat.**
 
 - **Slice 13 is deployed; only the signed-in checks are open.** Migrations
   0012 and 0013 are applied and verified live in rolled-back blocks. Seven
@@ -29,32 +29,57 @@ Kept current at the end of every session. Read this first; it is the handoff.
   found four real bugs, all fixed. The biggest was that the pick could
   change mid-week; 0013 measures from the week's start. Typecheck, lint,
   843 tests and `next build` pass.
-- **Why the check waits until Monday.** The strip counts 14 days back from
-  the start of the week. This week that is 7 Sep, and the oldest save is
-  9 Sep, so the strip is empty until the week turns at 05:30 IST on 28 Sep.
-  Lowering the age to 7 days is a one-line change in `lib/backlog.ts`, if
-  Ishank wants it sooner.
-- **What Ishank checks by hand from 28 Sep (about 3 minutes, Chrome and then
-  a phone):**
-  1. `/inbox`: a "From your backlog" box sits between the save box and
-     "Your library", with up to three articles. Each says something like
-     "Saved 2 weeks ago · 12 min · not started", and the box states its
-     rule.
-  2. Reload, then open it on the phone: the same three.
-  3. A title opens the article.
-  4. **Not now** on one: "Hidden from the strip for about a month." appears
-     and another article takes its place (if one qualifies).
-  5. Archive a strip article from its row in the list below. It leaves the
-     strip without a reload.
-  6. Switch the view to Archive, or pick a tag: the strip is gone. Back to
-     Inbox: it returns.
-  7. Keyboard: Tab to a strip button and press `#`; nothing in the list is
-     deleted. Press `/`; the cursor jumps to "Find on this page".
-  8. Phone: a long title wraps and the Not now button still fits.
-- **Next after it: Slice 14, listen mode.** Write it into this file (files,
-  Done-when and Gotcha) and show it to Ishank before building. Then, in
-  order: reading stats, Pocket/Instapaper import, and AI summary.
+- **The strip has items now.** Read-only check on 2026-09-28: this week's
+  (2026-W40) pick is three articles saved on 9 and 10 Sep, all 0% read.
+  The week of 21 Sep had none, because the cut-off was 7 Sep.
+- **What Ishank checks by hand (about a minute; reload, stable picks,
+  views and keyboard are covered by tests and the live check):**
+  1. `/inbox`: a "From your backlog" box between the save box and "Your
+     library", three articles, each like "Saved 2 weeks ago · 2 min · not
+     started", and the rule stated underneath.
+  2. **Not now** on one: "Hidden from the strip for about a month." appears
+     and the article leaves the box.
+  3. Archive another strip article from its row in the list below: it
+     leaves the box without a reload.
+  4. On the phone, the box fits and a long title wraps.
+- **Next: Slice 14, listen mode, in a new chat.** Write it into this file
+  (files, Done-when and Gotcha) and show it to Ishank before building. Then,
+  in order: reading stats, Pocket/Instapaper import, and AI summary.
   Migrations continue from **0014**.
+- **Research for Slice 14, from the 2026-09-24 idea review and its critic.**
+  It lived only in that chat, so it is kept here. File and line references
+  there predate Slice 11, so re-check them.
+  - What Ishank gets: a Listen control in the reader. It reads the article
+    aloud with the device's own voices (`speechSynthesis`), starting where
+    he is scrolled, at an adjustable rate, with pause, resume and
+    skip-sentence. The spoken sentence is tinted and the page follows it.
+    No dependency, no key, no migration: a rate preference fits
+    `profiles.settings` (merged like `settings.reader`), and the voice is
+    per device, so it belongs in localStorage.
+  - The limit to say up front: on an iPhone speech stops when the screen
+    locks or Safari goes to the background, so it is not a pocket podcast.
+    Server-made audio from a paid TTS API would fix that, but it adds a key,
+    cost and storage, and edges toward the "no podcasts" non-goal. Keep it
+    out.
+  - Unverified platform quirks. Chrome cuts long utterances after about
+    15 s, Android turns pause into cancel and sends no boundary events, and
+    iOS stops on lock. Treat these as a hypothesis for a five-minute phone
+    spike before building, not as fact.
+  - Speak from the rendered article, not `item_content.text`, which runs a
+    heading straight into the next paragraph with no pause. Slice 11's
+    `lib/highlight-dom.ts` and `lib/plain-text.ts` already read the DOM as
+    text, skipping the `.reader-image` placeholder and `noscript`. Painting
+    the current sentence can reuse the CSS Custom Highlight API the
+    highlights use. The page sends only `item_content.html` today.
+  - Traps in the reader: the toolbar auto-hides on downward scroll and
+    would hide Pause during follow-along. Esc navigates back, so speech must
+    be cancelled on unmount and `pagehide`. Follow-along scrolling writes
+    `read_progress` through the existing throttled path, which is fine now
+    but matters once Slice 8 decides what marks an item read. Many items
+    have `lang` null, so fall back to the default voice without claiming
+    none exists.
+  - Size: about one session. No Supabase CLI work; the checks that matter
+    are on Ishank's phone.
 - **Still open from earlier:** Firefox with the rebuilt extension, and the
   Slice 6 browser checks further down. Two new Slice 8 boxes came out of
   Slice 12: a fetch running when its item is deleted forever reports a
@@ -1419,8 +1444,8 @@ The strip brings three of those back to the top of the library.
       page 1), between the save form and "Your library", and renders nothing
       when no item qualifies.
       Loader and slot tested (`test/inbox-page.test.ts`,
-      `test/organise-ui.test.ts`). Left for Ishank's hand check, which has
-      to wait until the strip has items: from Monday 28 Sep, 05:30 IST.
+      `test/organise-ui.test.ts`). Left for Ishank's hand check. The strip
+      has items from 28 Sep (checked read-only that day).
 - [x] Each entry links to `/read/<id>` and says why it is there, for
       example "Saved 3 weeks ago · 12 min · 40% read", or "not started" at
       zero. Never "unread" or "not opened": an article opened and left at
