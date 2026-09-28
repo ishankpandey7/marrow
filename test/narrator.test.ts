@@ -1,16 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  SETTLE_MS,
   browserSpeech,
   createNarrator,
   type NarratorView,
   type Speech,
+  type SpeechEvents,
   type SpeechOptions,
 } from "@/components/reader/narrator";
 
 interface Call {
   text: string;
   options: SpeechOptions;
-  events: { end(): void; error(code: string): void };
+  events: SpeechEvents;
 }
 
 /** A speech engine whose events fire only when the test says so, as late as it likes. */
@@ -192,6 +194,41 @@ describe("the narrator", () => {
     expect(view().problem).toMatch(/hidden/);
   });
 
+  it("resumes and restarts from the word being spoken, where words are reported", () => {
+    const { engine, narrator } = setup();
+    const long = ["Zero one two three.", "Next."];
+    narrator.play(long, 0, OPTIONS);
+    engine.last().events.word(5);
+    narrator.configure({ ...OPTIONS, rate: 1.5 });
+    expect(engine.last().text).toBe("one two three.");
+    // Offsets from the restarted utterance count from where it began.
+    engine.last().events.word(4);
+    narrator.pause();
+    narrator.resume();
+    expect(engine.last().text).toBe("two three.");
+    // A late word from an utterance already given up on moves nothing.
+    engine.calls[0].events.word(14);
+    narrator.pause();
+    narrator.resume();
+    expect(engine.last().text).toBe("two three.");
+    // A new sentence, or a skip, starts at its beginning.
+    engine.last().events.end();
+    expect(engine.last().text).toBe("Next.");
+    narrator.skip(-1);
+    expect(engine.last().text).toBe("Zero one two three.");
+  });
+
+  it("starts from the sentence's beginning when no words are reported, or one is at the very end", () => {
+    const { engine, narrator } = setup();
+    narrator.play(SENTENCES, 0, OPTIONS);
+    narrator.pause();
+    narrator.resume();
+    expect(engine.last().text).toBe("Zero.");
+    engine.last().events.word(5);
+    narrator.configure({ ...OPTIONS, rate: 2 });
+    expect(engine.last().text).toBe("Zero.");
+  });
+
   it("has nothing to play in an empty article", () => {
     const { engine, narrator, view } = setup();
     narrator.play([], 0, OPTIONS);
@@ -209,6 +246,8 @@ describe("the browser engine", () => {
     voice: { voiceURI: string } | null = null;
     onend: (() => void) | null = null;
     onerror: ((event: { error: string }) => void) | null = null;
+    onboundary: ((event: { name?: string; charIndex: number }) => void) | null =
+      null;
     constructor(public text: string) {}
   }
 
@@ -235,13 +274,11 @@ describe("the browser engine", () => {
     const speech = browserSpeech(synth as unknown as SpeechSynthesis);
     const end = vi.fn();
     const error = vi.fn();
+    const word = vi.fn();
     speech.speak(
       "Hello.",
       { rate: 1.25, lang: "en", voice: "Lekha" },
-      {
-        end,
-        error,
-      },
+      { end, error, word },
     );
     const [utterance] = synth.spoken;
     expect(utterance).toMatchObject({
@@ -254,13 +291,66 @@ describe("the browser engine", () => {
     });
     utterance.onend?.();
     utterance.onerror?.({ error: "network" });
+    utterance.onboundary?.({ name: "word", charIndex: 3 });
+    utterance.onboundary?.({ name: "sentence", charIndex: 0 });
     expect(end).toHaveBeenCalledOnce();
     expect(error).toHaveBeenCalledWith("network");
+    expect(word.mock.calls).toEqual([[3]]);
 
-    speech.speak("Hi.", { rate: 1, lang: null, voice: "Gone" }, { end, error });
+    speech.speak(
+      "Hi.",
+      { rate: 1, lang: null, voice: "Gone" },
+      { end, error, word },
+    );
     expect(synth.spoken[1]).toMatchObject({ lang: "", voice: null });
-    speech.speak("Hi.", { rate: 1, lang: "en", voice: null }, { end, error });
+    speech.speak(
+      "Hi.",
+      { rate: 1, lang: "en", voice: null },
+      { end, error, word },
+    );
     expect(synth.spoken[2]).toMatchObject({ lang: "en", voice: null });
+  });
+
+  it("waits after interrupting speech before the next speak, and only then", () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal("SpeechSynthesisUtterance", FakeUtterance);
+      const synth = fakeSynth();
+      const speech = browserSpeech(synth as unknown as SpeechSynthesis);
+      const events = { end: vi.fn(), error: vi.fn(), word: vi.fn() };
+      const options = { rate: 1.5, lang: "en", voice: null };
+
+      // Nothing speaking: the speak goes straight out (the iPhone gesture).
+      speech.cancel();
+      speech.speak("First.", options, events);
+      expect(synth.spoken.map((u) => u.text)).toEqual(["First."]);
+
+      // Interrupting: Android loses a speak sent straight behind the cancel.
+      synth.speaking = true;
+      speech.cancel();
+      synth.speaking = false;
+      speech.speak("Again.", options, events);
+      expect(synth.spoken).toHaveLength(1);
+      expect(speech.stalled()).toBe(false);
+      vi.advanceTimersByTime(SETTLE_MS - 1);
+      expect(synth.spoken).toHaveLength(1);
+      vi.advanceTimersByTime(1);
+      expect(synth.spoken.map((u) => [u.text, u.rate])).toEqual([
+        ["First.", 1.5],
+        ["Again.", 1.5],
+      ]);
+
+      // A cancel while it waits (Pause) means it never speaks.
+      synth.speaking = true;
+      speech.cancel();
+      synth.speaking = false;
+      speech.speak("Dropped.", options, events);
+      speech.cancel();
+      vi.advanceTimersByTime(SETTLE_MS * 2);
+      expect(synth.spoken).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("counts a paused or silent engine as stalled", () => {
