@@ -57,8 +57,10 @@ Kept current at the end of every session. Read this first; it is the handoff.
 - **The iPhone limit stays.** Speech stops on lock on an iPhone; that is
   Safari, and only server-made audio avoids it (ARCHITECTURE §13,
   2026-09-28). The panel says so.
-- **Next: reading stats**, then Pocket/Instapaper import and AI summary.
-  Write each into this file and show it to Ishank before building.
+- **Next: Slice 15, reading stats.** Written below on 2026-09-28 and
+  waiting for Ishank's ok, and two answers: may it take over Slice 8's
+  `read_at` box, and should 0014 backfill `read_at` for articles already
+  read to 90%? After it: Pocket/Instapaper import, then AI summary.
   Migrations continue from **0014**.
 - **Still open from earlier:** Firefox with the rebuilt extension, and the
   Slice 6 browser checks further down. Two new Slice 8 boxes came out of
@@ -1646,6 +1648,100 @@ on Chrome, so start with the default voice rather than waiting for the list.
 Third: `speechSynthesis` belongs to the window, not the component. Esc and
 Back to library are client navigations, so an article that is not cancelled
 on unmount keeps talking over the library.
+
+---
+
+## Slice 15 — Reading stats
+
+**Agent:** Claude Code. Needs the real database for 0014; the page is
+signed-in only, so the UI check is Ishank's.
+**Files:**
+- `supabase/migrations/0014_reading_stats.sql` (new), `docs/SCHEMA.sql`
+- `components/reader/actions.ts` (`saveReadingProgress` stamps `read_at`,
+  nothing else)
+- `lib/stats.ts` (new: week labels, the bar scale, the copy)
+- `app/(app)/stats/page.tsx` (new), `components/stats-view.tsx` (new)
+- `components/filter-bar.tsx` (a Stats link beside Trash, nothing else)
+- `lib/stats.test.ts` (new), `test/stats-page.test.ts` (new),
+  `test/reader-actions.test.ts`, `test/schema.test.ts`
+
+Design notes, 2026-09-28, from the schema and the reader code.
+
+- **Stats need `read_at`, and nothing writes it.** That is an open Slice 8
+  box (found in Slice 5). Without it this page can count saves and
+  highlights, but never "finished". So this slice takes that box over,
+  with Ishank's agreement: the reader stamps `read_at` the first time an
+  article's progress reaches 90%, the same line the backlog strip uses for
+  "unfinished". The library's Read/Unread filter and labels start working
+  with no change of their own.
+- **What the page shows, and what it does not.** The last 12 weeks, one
+  row each: saved, finished, about how many minutes those finished articles
+  take to read, and highlights made. Above it: in the library now, finished
+  in all, and the backlog (ready, under 90%, saved over 14 days ago). No
+  streaks, goals, badges or comparisons. §1 rules out engagement ranking,
+  and a streak is that aimed at the reader.
+- **One SQL function, SECURITY INVOKER.** `reading_stats(p_weeks)` builds
+  the weeks with `generate_series` and counts into them, so an empty week
+  is a zero and not a missing row. RLS confines it to the caller, as with
+  `backlog_strip`. Bars are plain CSS widths in a real `<table>`; no chart
+  library.
+- **Weeks run Monday to Sunday in UTC**, the same as the backlog strip
+  (they turn at 05:30 IST on Monday), and the page says so. A per-reader
+  time zone is out of scope.
+
+### Done when
+
+- [ ] `saveReadingProgress` sets `read_at = now()` when the new progress is
+      at least 0.9 and `read_at` is still null, on the reader's own ready,
+      non-deleted item. Scrolling back never clears it and reading again
+      never moves it. The preview writes nothing, as before.
+- [ ] 0014 backfills `read_at` from `updated_at` for items already at 90%
+      or more, if Ishank agrees; the notes say those dates are approximate.
+      It adds `public.reading_stats(p_weeks int)` returning
+      `(week_start date, saved int, finished int, finished_minutes int,
+      highlights int)` for the last `p_weeks` weeks, 1 to 52. Items in
+      Trash are left out. EXECUTE is revoked from public, anon and
+      service_role and granted to authenticated.
+- [ ] Verified live in a rolled-back block, as the owner under
+      `authenticated`: an empty week is a zero row; an item saved in one
+      week and finished in another counts once in each; a trashed item
+      counts nowhere; a stranger gets zeros; anon and service_role cannot
+      execute it.
+- [ ] `/stats` shows the 12 weeks newest first, with the totals and the
+      backlog line above, and the rule for "finished" stated on the page
+      ("scrolled to 90%"). Minutes say "about", and an item with no reading
+      time adds nothing rather than zero minutes. The library's heading
+      row links to it.
+- [ ] With nothing saved yet, the page says so instead of drawing twelve
+      empty rows.
+- [ ] Tests: the `read_at` stamp (at 0.9, not at 0.89, never moved, never
+      cleared, not for someone else's item); week labels; the bar scale
+      (a zero week, a single week, one huge week); the page render (escaped
+      labels, the empty state, the Stats link); the migration text.
+- [ ] ARCHITECTURE §4 (what `read_at` means now), §7 (the stats page) and
+      §13; the Slice 8 `read_at` box points here. SCHEMA.sql matches 0014.
+- [ ] Hand check by Ishank: finish one article, see it in this week's row
+      and under Read in the library; the page on the phone.
+
+Not in this slice: a per-reader time zone; a manual "Mark as read" or
+"Mark unread"; stats by tag or site; export of the stats.
+
+### Gotcha
+
+`read_at` is a first-finish stamp, and it must stay one. If every write at
+90% or more sets it, reopening an article from March moves it into this
+week, and "finished this week" counts rereads. Stamp it only where it is
+null, in the same statement as the progress write, so a race between two
+tabs cannot stamp twice.
+
+Second: "finished" is a scroll, not a reading. An article short enough to
+fit on the screen reports progress 1 as soon as it opens, so opening one
+finishes it. The page states the rule rather than claiming "you read 9
+articles".
+
+Third: count into a series, not from the rows. `group by` over items
+returns only the weeks that had something, and a chart built from it
+silently skips the empty weeks, which are the ones that matter.
 
 ---
 
