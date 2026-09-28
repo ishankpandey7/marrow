@@ -20,38 +20,45 @@ not check is worse than an unticked one, because next session it gets skipped.
 
 Kept current at the end of every session. Read this first; it is the handoff.
 
-**Last updated: 2026-09-28 — Slice 14 reopened after Ishank's Android check; a fix is pushed and waits for his re-check. Slice 15 (reading stats) is written and waits for his ok.**
+**Last updated: 2026-09-28 — Slice 14 reopened after Ishank's Android checks; a second fix is pushed and waits for his re-check. Slice 15 (reading stats) is written and waits for his ok.**
 
-- **Slice 14 is deployed but not done.** After a first "sab thik hai",
-  Ishank reported three things from his Android phone in Chrome:
-  1. Changing the **speed** did nothing he could hear.
-  2. Changing the **voice** did nothing.
-  3. Speech stops when the screen locks, and when Chrome goes to the home
-     screen.
-- **What changed for 1 and 2.** A speed or voice change used to apply from
-  the *next* sentence, five to ten seconds later. It now restarts the
-  current sentence with the new setting at once. With a voice chosen, the
-  utterance also takes that voice's language (en-IN, not the article's
-  "en"): Chrome on Android picks its voice by language, which is the
-  likely reason the choice was ignored. Checked in the pane's Chromium
-  (the restart and the language); Android itself is Ishank's re-check.
-  Typecheck, lint, 883 tests and `next build` pass. The fix was not put
-  through reviewer agents, to save budget; it is small and fully tested.
-- **3 is the platform, as for the iPhone.** Chrome on Android stops page
-  speech in the background too. Only server-made audio avoids it
-  (ARCHITECTURE §13, 2026-09-28). The panel now says "on a phone" instead
-  of "on an iPhone".
+- **Slice 14 is deployed but not done.** On Ishank's Android phone
+  (Chrome), a speed or voice change took effect only at the next sentence,
+  and speech stops when the screen locks or Chrome goes to the home
+  screen. Everything else on the click-list held.
+- **The first fix did not work on Android.** It made a change restart the
+  current sentence at once (and a chosen voice set the utterance's
+  language). In the pane's Chromium the restart worked. On the phone the
+  change still arrived only at the next sentence, and nothing was
+  repeated. The likely cause: Chrome on Android stops the system voice
+  asynchronously, so a `speak()` sent straight behind `cancel()` is lost in
+  that stop and reported as ended, and the queue moves on a sentence.
+- **The second fix, pushed 2026-09-28.** After a `cancel()` that
+  interrupted speech, the next `speak()` waits 350 ms (`SETTLE_MS`). The
+  first speak of a session is never delayed, because iPhone Safari needs it
+  inside the tap. And, at Ishank's suggestion, Resume and a changed setting
+  now start from the word being spoken, where the browser reports words;
+  where it reports none, from the sentence's start. Seen in the pane:
+  a speed change restarted the sentence 350 ms later, › moved exactly one,
+  Resume carried on from mid-sentence. Typecheck, lint, 886 tests and
+  `next build` pass. Not put through reviewer agents, to save budget.
+- **The background stop is not fixed and cannot be with device voices.**
+  Chrome on Android and Safari on iPhone both stop page speech when the
+  page leaves the screen. The panel says so; it does not solve it. The
+  options are Ishank's decision: Chrome's own "Listen to this page" on
+  Android, or server-made audio (ARCHITECTURE §13), which would be a slice
+  of its own and a change to §1.
 - **What Ishank re-checks (two minutes, Android, no sign-in):**
   1. <https://marrow-bice.vercel.app/reader-preview/longform>, speaker
-     button, **Listen from here**. While it reads, tap **1.5×**: the
-     sentence starts again, faster, straight away. Tap **0.75×**: slower.
-  2. Open **Voice** and pick an English voice with a different accent (for
-     example United Kingdom or India): the sentence starts again in it.
-  3. Go to the home screen and come back: the button reads Resume, and
-     Resume carries on from that sentence.
+     button, **Listen from here**. While it reads, tap **1.5×**: within
+     about half a second the *same* sentence carries on, faster.
+  2. Pick another **Voice**: the same sentence carries on in it.
+  3. In the panel, › skips exactly one sentence, not two.
+  4. Go to the home screen and back: the button reads Resume.
 
-  If 1 or 2 still does nothing, Chrome on that phone ignores the setting
-  and the panel should stop offering it there.
+  If 1 still waits for the next sentence, 350 ms is too short for that
+  phone, or the cause is something else; the next step would be an event
+  log on the preview page rather than another guess.
 - **Next: Slice 15, reading stats.** Written below on 2026-09-28 and
   waiting for Ishank's ok, and two answers: may it take over Slice 8's
   `read_at` box, and should 0014 backfill `read_at` for articles already
@@ -1539,7 +1546,8 @@ against the code on 2026-09-28.
   Android turns pause into cancel and sends no word boundaries, iOS stops on
   lock. The design assumes all three: one sentence per utterance with a
   length cap; Pause is `cancel()` and Resume speaks the same sentence again
-  from its start; the tint moves per sentence when it is queued, never per
+  (from the last word the browser reported, else from its start); the tint
+  moves per sentence when it is queued, never per
   word on `boundary` (changed from "on `start`" while building: queueing is
   one event fewer to depend on). The phone check then records which quirks are real, and
   nothing depends on the answer.
@@ -1570,8 +1578,9 @@ against the code on 2026-09-28.
       scrolled to mid-article, the first sentence under the toolbar.
 - [x] **Pause**, **Resume**, and skip back and forward one sentence. Pause
       cancels and remembers the sentence; Resume speaks it again from its
-      start. The last sentence ending leaves the control at "Listen again",
-      not stuck on Pause.
+      start (since 2026-09-28, from the last word the browser reported,
+      where it reports words). The last sentence ending leaves the control
+      at "Listen again", not stuck on Pause.
       Narrator and UI tests. In the pane: Pause spoke nothing more, Resume
       repeated the sentence, › moved exactly one.
 - [x] The sentence being spoken is tinted with a `marrow-listen` Custom
@@ -1592,9 +1601,11 @@ against the code on 2026-09-28.
       device; damaged storage falls back to the defaults.
       `lib/listen.test.ts` and the UI test (stored JSON, the restarted
       sentence's rate, voice and language).
-      Reopened 2026-09-28: on Ishank's Android neither change was heard.
-      Changed from "applied from the next sentence", and a chosen voice now
-      sets the utterance's language. Checked in the pane's Chromium;
+      Reopened 2026-09-28: on Ishank's Android a change was heard only at
+      the next sentence. Changed from "applied from the next sentence";
+      a chosen voice sets the utterance's language; and after an
+      interrupting cancel the next speak waits `SETTLE_MS` (the first
+      restart was lost on Android). Checked in the pane's Chromium;
       waiting for his re-check on Android.
 - [x] Speech stops on unmount (Esc, Back to library, client navigation), on
       `pagehide`, and when the article changes. Back on a visible page after
@@ -1645,6 +1656,12 @@ Second: iPhone Safari speaks only from a user gesture. The first `speak()`
 has to run synchronously inside the tap handler, with no `await` for voices
 and no animation frame first. `getVoices()` is empty until `voiceschanged`
 on Chrome, so start with the default voice rather than waiting for the list.
+
+Found on Ishank's phone: Chrome on Android stops the system voice after
+`cancel()` returns. A `speak()` sent straight behind it is lost in that
+stop and reported as ended, so a restart or a skip lands one sentence
+further on. Wait briefly after a cancel that interrupted speech, but never
+before the first speak of a session (the iPhone gesture above).
 
 Third: `speechSynthesis` belongs to the window, not the component. Esc and
 Back to library are client navigations, so an article that is not cancelled
@@ -2476,3 +2493,12 @@ inside this slice. The API acceptance box stays unticked.
   by language, so the utterance's `lang` has to be the chosen voice's.
   Also: a ticked hand check deserves a question about each step that
   settles something (here 4 and 5), not only a "fine" for the list.
+- **Android, second round, 2026-09-28.** With changes restarting the
+  sentence at once, Ishank's phone still applied a new speed or voice only
+  at the next sentence, and repeated nothing. A lost restart fits that:
+  the stop after `cancel()` is asynchronous there. Answered with a 350 ms
+  wait after an interrupting cancel (`SETTLE_MS`), not yet confirmed on the
+  phone. Ishank also asked for a restart from the current word rather than
+  the sentence start; that works wherever the browser sends word
+  `boundary` events (the pane's Chromium does), and falls back to the
+  sentence start where it does not.

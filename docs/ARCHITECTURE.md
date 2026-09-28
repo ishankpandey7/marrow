@@ -621,8 +621,12 @@ disappears.
   `Intl.Segmenter` in the article's `lang`, with a punctuation split where it
   is missing. One over 200 UTF-16 units is split at a comma or a space.
 - One sentence per utterance (`components/reader/narrator.ts`). Pause
-  cancels and Resume speaks the sentence again from its start; skips move
-  one sentence. Every utterance carries a generation number, and events
+  cancels, and Resume speaks the sentence again from the last word the
+  browser reported (word `boundary` events), or from its start where none
+  arrive; skips move one sentence. After a cancel that interrupted speech,
+  the next `speak()` waits 350 ms, because Chrome on Android stops
+  asynchronously and loses a speak sent straight behind the cancel. The
+  first speak of a session never waits (iPhone's gesture rule). Every utterance carries a generation number, and events
   from any but the newest are dropped, because a cancelled utterance
   answers late: Chrome with an `interrupted` error, others with `end`. The
   current utterance is held by reference.
@@ -639,8 +643,8 @@ disappears.
   subtag. With none stored, the utterance gets the article's `lang` and the
   device picks its default voice. With one stored, the utterance takes that
   voice's language rather than the article's, because Chrome on Android
-  picks the voice by language. A change of either restarts the current
-  sentence at once; one that waited for the next sentence was heard too
+  picks the voice by language. A change of either restarts speech at once,
+  from the word being spoken where the browser reports words; one that waited for the next sentence was heard too
   late to seem to work.
 - Speech stops on unmount (Esc and Back to library are client navigations,
   and `speechSynthesis` belongs to the window) and on `pagehide`. When the
