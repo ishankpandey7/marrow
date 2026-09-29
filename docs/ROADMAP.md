@@ -20,77 +20,34 @@ not check is worse than an unticked one, because next session it gets skipped.
 
 Kept current at the end of every session. Read this first; it is the handoff.
 
-**Last updated: 2026-09-28 — Slice 15 (reading stats) built, reviewed and pushed; waiting on Ishank's hand check. Slice 14 still waits for his Android re-check.**
+**Last updated: 2026-09-29 — Slices 14 (listen mode) and 15 (reading stats) done and hand-checked. Next is Slice 16, Pocket/Instapaper import, in a new chat.**
 
-- **Slice 15 is deployed; only the hand check is open.** Migrations 0014
-  and 0015 are applied and verified live in a rolled-back block. 0015 is a
-  fix the live check found: `read_progress` is real, and against the
-  numeric literal 0.9 an article at exactly 90% was not finished. Seven of
-  eight boxes are ticked. Three reviewers on the diff (about 3.1 lakh
-  tokens) found two real problems in the page, both fixed: Backlog counted
-  an article finished and then scrolled back up, and a week that finished
-  nothing showed "not known" minutes. Typecheck, lint, 915 tests and
-  `next build` pass.
-- **What Ishank checks by hand (about 3 minutes, signed in):**
-  1. `/inbox`: a **Stats** button beside Trash opens `/stats`.
-  2. The tiles and table match the live data on 2026-09-28: "Week of
-     7 Sep" shows 13 saved and 2 finished (the two backfilled articles),
-     "Last week" 7 saved and 1 highlight, "This week" zeros. The rules are
-     stated under the table.
-  3. Open an unfinished article and scroll to its end. Reload `/stats`:
-     "This week" shows 1 finished and its minutes, and Finished goes up by
-     one.
-  4. `/inbox`, filter **Read**: that article is there, labelled Read.
-  5. Scroll the same article back to the top, reload `/stats`: it is still
-     finished, and Backlog did not go up.
-  6. On the phone, `/stats` fits; the table may scroll sideways, and the
-     bars are hidden there.
-- **The backlog strip now asks `read_at` (0016, 2026-09-29, Ishank's
-  yes).** It used `read_progress < 0.9`, so an article at exactly 90%, or
-  one finished and scrolled back up, was Read in the library and still
-  picked for the strip. Shown live before and after in a rolled-back
-  block. No UI change; the strip's click-list from Slice 13 still holds.
-
-- **Slice 14 is deployed but not done.** On Ishank's Android phone
-  (Chrome), a speed or voice change took effect only at the next sentence,
-  and speech stops when the screen locks or Chrome goes to the home
-  screen. Everything else on the click-list held.
-- **The first fix did not work on Android.** It made a change restart the
-  current sentence at once (and a chosen voice set the utterance's
-  language). In the pane's Chromium the restart worked. On the phone the
-  change still arrived only at the next sentence, and nothing was
-  repeated. The likely cause: Chrome on Android stops the system voice
-  asynchronously, so a `speak()` sent straight behind `cancel()` is lost in
-  that stop and reported as ended, and the queue moves on a sentence.
-- **The second fix, pushed 2026-09-28.** After a `cancel()` that
-  interrupted speech, the next `speak()` waits 350 ms (`SETTLE_MS`). The
-  first speak of a session is never delayed, because iPhone Safari needs it
-  inside the tap. And, at Ishank's suggestion, Resume and a changed setting
-  now start from the word being spoken, where the browser reports words;
-  where it reports none, from the sentence's start. Seen in the pane:
-  a speed change restarted the sentence 350 ms later, › moved exactly one,
-  Resume carried on from mid-sentence. Typecheck, lint, 886 tests and
-  `next build` pass. Not put through reviewer agents, to save budget.
-- **The background stop is not fixed and cannot be with device voices.**
-  Chrome on Android and Safari on iPhone both stop page speech when the
-  page leaves the screen. The panel says so; it does not solve it. The
-  options are Ishank's decision: Chrome's own "Listen to this page" on
-  Android, or server-made audio (ARCHITECTURE §13), which would be a slice
-  of its own and a change to §1.
-- **What Ishank re-checks (two minutes, Android, no sign-in):**
-  1. <https://marrow-bice.vercel.app/reader-preview/longform>, speaker
-     button, **Listen from here**. While it reads, tap **1.5×**: within
-     about half a second the *same* sentence carries on, faster.
-  2. Pick another **Voice**: the same sentence carries on in it.
-  3. In the panel, › skips exactly one sentence, not two.
-  4. Go to the home screen and back: the button reads Resume.
-
-  If 1 still waits for the next sentence, 350 ms is too short for that
-  phone, or the cause is something else; the next step would be an event
-  log on the preview page rather than another guess.
-- **Next after Slice 15:** Pocket/Instapaper import, then AI summary.
-  Write each into this file and show it to Ishank before building.
-  Migrations continue from **0017**.
+- **Slice 15 is deployed and done.** Migrations 0014, 0015 and 0016 are
+  applied and verified live in rolled-back blocks. `read_at` is now a
+  first-finish stamp (a trigger at 90%, compared as real), `/stats` shows
+  twelve weeks, and the backlog strip asks `read_at` too (0016, Ishank's
+  yes). Ishank ran the six-step click-list on 2026-09-29 and reported it
+  fine; all eight boxes are ticked. 915 tests.
+- **Slice 14 is deployed and done.** Two Android rounds were needed: a
+  speed or voice change first waited for the next sentence, then was lost
+  behind `cancel()`. After a 350 ms wait following an interrupting cancel,
+  Ishank's re-check on Android passed on 2026-09-29. Resume and a changed
+  setting start from the current word where the browser reports words.
+  Speech still stops when a phone locks or leaves the browser; server-made
+  audio was declined for now ("key wagera abhi nahi chahiye").
+- **Next: Slice 16, Pocket/Instapaper import, in a new chat.** Write it
+  into this file (files, Done-when, Gotcha) and show it to Ishank before
+  building. Then AI summary. Migrations continue from **0017**.
+- **Research for Slice 16, to verify rather than trust.** Mozilla closed
+  Pocket in 2025, with exports available only until a cut-off that year,
+  so the only Pocket data left is a file Ishank may already have; ask him
+  whether he has one, and read that file rather than assume a format.
+  Pocket's later exports were reported to be a zip holding a CSV (title,
+  url, time added, tags, status); older ones were HTML. Instapaper exports
+  CSV. Imports go through the same save path and limits as everything
+  else (`save_item_impl`, the 60-per-hour limit, fetch jobs), and a
+  thousand-row import must not trip the limit or flood the fetcher: that
+  is the Gotcha to design first.
 - **Still open from earlier:** Firefox with the rebuilt extension, and the
   Slice 6 browser checks further down. Two new Slice 8 boxes came out of
   Slice 12: a fetch running when its item is deleted forever reports a
@@ -1625,7 +1582,7 @@ against the code on 2026-09-28.
       left `data-hidden="false"` while playing and hid the toolbar once
       paused. The UI tests run without `CSS.highlights`. The other themes'
       tint is for the hand check.
-- [ ] **Rate** 0.75, 1, 1.25, 1.5, 1.75 or 2 (default 1), applied at
+- [x] **Rate** 0.75, 1, 1.25, 1.5, 1.75 or 2 (default 1), applied at
       once: the current sentence starts again with it. **Voice**: the
       device's voices, those matching the
       article's `lang` first. With `lang` null or no match, the device
@@ -1640,6 +1597,8 @@ against the code on 2026-09-28.
       interrupting cancel the next speak waits `SETTLE_MS` (the first
       restart was lost on Android). Checked in the pane's Chromium;
       waiting for his re-check on Android.
+      Confirmed by Ishank on 2026-09-29 against the re-check list
+      ("sab thik hai").
 - [x] Speech stops on unmount (Esc, Back to library, client navigation), on
       `pagehide`, and when the article changes. Back on a visible page after
       the system stopped speech (an iPhone lock), the control reads Resume,
@@ -1661,12 +1620,17 @@ against the code on 2026-09-28.
       speech, a control on the preview, unmount cancels).
       883 tests pass, with typecheck, lint and `next build`.
 - [x] ARCHITECTURE §1 (why this is not a podcast), §7 (Listen) and §13.
-- [ ] Hand check by Ishank (click-list in Where things stand): the phone on
+- [x] Hand check by Ishank (click-list in Where things stand): the phone on
       `/reader-preview/longform`, then one signed-in article in Chrome. Which
       of the three quirks are real goes into Notes from the field.
       Reopened 2026-09-28. The first "sab thik hai" was followed by three
-      failures on Android (speed, voice, background). The rest held. The
-      re-check list is in Where things stand.
+      failures on Android (speed, voice, background). The rest held.
+      After the second fix, Ishank ran the four-step re-check on Android
+      on 2026-09-29 and reported it fine ("sab thik hai"): a speed or
+      voice change carries on in the same sentence, › skips one, and the
+      home screen leaves Resume. Speech still stops in the background, as
+      the panel says; server audio was declined for now ("key wagera abhi
+      nahi chahiye").
 
 Not in this slice: server-made audio and playback with the screen locked;
 a per-word tint; tapping a sentence to start there; a keyboard shortcut;
@@ -1801,8 +1765,10 @@ Design notes, 2026-09-28, from the schema and the reader code.
       the stats page) and §13; the Slice 8 `read_at` box points here.
       SCHEMA.sql matches 0014 and 0015. Changed from "§4": `read_progress`
       is described in §7, so `read_at` went beside it.
-- [ ] Hand check by Ishank: finish one article, see it in this week's row
+- [x] Hand check by Ishank: finish one article, see it in this week's row
       and under Read in the library; the page on the phone.
+      Confirmed by Ishank on 2026-09-29 against the six-step click-list
+      ("sab thik hai").
 
 Not in this slice: a per-reader time zone; a manual "Mark as read" or
 "Mark unread"; stats by tag or site; export of the stats.
