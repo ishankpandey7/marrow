@@ -45,12 +45,11 @@ Kept current at the end of every session. Read this first; it is the handoff.
      finished, and Backlog did not go up.
   6. On the phone, `/stats` fits; the table may scroll sideways, and the
      bars are hidden there.
-- **Waiting on Ishank's yes (earlier slice):** the backlog strip (Slice 13)
-  still calls an article unfinished while `read_progress < 0.9`, a numeric
-  comparison. So an article at exactly 90%, or one finished and scrolled
-  back up, is Read in the library and can still be on the strip. A
-  one-line migration (`read_at is null`) would align it; not done without
-  his agreement.
+- **The backlog strip now asks `read_at` (0016, 2026-09-29, Ishank's
+  yes).** It used `read_progress < 0.9`, so an article at exactly 90%, or
+  one finished and scrolled back up, was Read in the library and still
+  picked for the strip. Shown live before and after in a rolled-back
+  block. No UI change; the strip's click-list from Slice 13 still holds.
 
 - **Slice 14 is deployed but not done.** On Ishank's Android phone
   (Chrome), a speed or voice change took effect only at the next sentence,
@@ -91,7 +90,7 @@ Kept current at the end of every session. Read this first; it is the handoff.
   log on the preview page rather than another guess.
 - **Next after Slice 15:** Pocket/Instapaper import, then AI summary.
   Write each into this file and show it to Ishank before building.
-  Migrations continue from **0016**.
+  Migrations continue from **0017**.
 - **Still open from earlier:** Firefox with the rebuilt extension, and the
   Slice 6 browser checks further down. Two new Slice 8 boxes came out of
   Slice 12: a fetch running when its item is deleted forever reports a
@@ -1511,6 +1510,10 @@ The strip brings three of those back to the top of the library.
       Confirmed by Ishank on 2026-09-28 against the click-list in Where
       things stand ("baaki sab check list me thik hai").
 
+Changed after the slice, 2026-09-29: "less than 90% read" became "never
+finished" (`read_at is null`, 0016), once Slice 15 made `read_at` a
+stamp that does not fall when an article is scrolled back up.
+
 Not in this slice: the weekly email digest (the research ranked it weak: it
 needs Resend, a sending domain and working server-side Sentry); writing
 `read_at` (Slice 8); a setting to turn the strip off.
@@ -2578,9 +2581,11 @@ inside this slice. The API acceptance box stays unticked.
   0015 compared with `0.9::real`. The live check caught it; the migration
   text looked right. PostgREST filters are not affected: `lt.0.9` arrives
   untyped and takes the column's type.
-- **The same trap is in the backlog strip** (`read_progress < 0.9`, 0013),
-  so the strip calls an article at exactly 0.9 unfinished while
-  `read_at` calls it finished. Waiting on Ishank (Where things stand).
+- **The same trap was in the backlog strip** (`read_progress < 0.9`,
+  0013). Fixed by 0016 with Ishank's yes on 2026-09-29: the strip asks
+  `read_at is null`. Live, with every other candidate archived in a
+  rolled-back block, the strip picked articles at 0.9, at 0.1 after being
+  finished, and at 0.4 before 0016; after it, only the one at 0.4.
 - **`read_progress` is where the reader is, not how far they got.** It
   falls when a finished article is scrolled back up. Anything that means
   "finished" should read `read_at`, which never falls. The review caught

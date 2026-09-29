@@ -599,11 +599,10 @@ disappears.
   `search_items`; EXECUTE is kept from anon and the service role. The
   minimum age is passed from `lib/backlog.ts`, so changing it is a code
   change.
-- The strip's "unfinished" is still `read_progress < 0.9`, written before
-  `read_at` existed. Since Slice 15 the two can disagree: at exactly 0.9
-  (a numeric literal against a real column), and for a finished article
-  scrolled back up. Recorded in Notes from the field, 2026-09-28; changing
-  the strip is Ishank's call. That measures scrolling, not opening, so the
+- "Unfinished" means `read_at` is null (0016). Before Slice 15 nothing
+  recorded finishing, so 0012 and 0013 used `read_progress < 0.9`; that
+  disagreed with `read_at` at exactly 0.9 and for a finished article
+  scrolled back up. Finishing is still a scroll, not an opening, so the
   copy says "40% read" or "not started", never "unread".
 - Not now sets `items.resurface_after` 30 days ahead through the session
   client; nothing else about the item changes. The item comes back at the
@@ -1048,3 +1047,7 @@ re-litigate. Date, decision, reason.
   so any path that writes progress stamps the same way in the same
   statement. It compares against `0.9::real`: the column is real, and the
   numeric literal made an article at exactly 90% unfinished.
+- **2026-09-29 — The backlog strip asks `read_at` (0016).** With a stamp
+  that never falls, "unfinished" became "never stamped" everywhere: the
+  stats page's Backlog and the strip. Asked of Ishank first, because the
+  strip is Slice 13's.
