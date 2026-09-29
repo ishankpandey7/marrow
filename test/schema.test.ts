@@ -268,15 +268,15 @@ describe("the trash index (0011)", () => {
   });
 });
 
-describe("the backlog strip (0012, 0013)", () => {
+describe("the backlog strip (0012, 0013, 0016)", () => {
   const find = (prefix: string) =>
     migrations.find((m) => m.name.startsWith(prefix))?.sql ?? "";
   const current = [
     ["docs/SCHEMA.sql", schema],
-    ["0013", find("0013_")],
+    ["0016", find("0016_")],
   ] as const;
   const fn = (sql: string) =>
-    /create function public\.backlog_strip\(p_week text, p_min_age_days integer\)[\s\S]*?\$\$;/.exec(
+    /create (?:or replace )?function public\.backlog_strip\(p_week text, p_min_age_days integer\)[\s\S]*?\$\$;/.exec(
       sql,
     )?.[0] ?? "";
 
@@ -302,10 +302,13 @@ describe("the backlog strip (0012, 0013)", () => {
         "i.status = 'ready'",
         "i.deleted_at is null",
         "i.archived_at is null",
-        `i.read_progress < ${BACKLOG_FINISHED}`,
+        // Never finished, by the stamp: read_progress falls again when a
+        // finished article is scrolled back up (0016).
+        "i.read_at is null",
         "(i.resurface_after is null or i.resurface_after <= week.starts)",
       ])
         expect(body).toContain(condition);
+      expect(body).not.toContain("read_progress <");
       expect(body).toContain(`limit ${BACKLOG_SIZE};`);
     },
   );

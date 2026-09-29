@@ -3,9 +3,10 @@ import { siteLabel } from "@/lib/trash";
 
 /**
  * The "From your backlog" strip (Slice 13). The rule lives in
- * public.backlog_strip (0013); these are its numbers, which the strip states.
+ * public.backlog_strip (0016); these are its numbers, which the strip states.
  * The minimum age is passed to the function, and test/schema.test.ts holds
- * the migration to the other two. The rule is fixed and disclosed on purpose:
+ * the migration to the size. "Finished" is `read_at`, stamped at
+ * BACKLOG_FINISHED (0014, 0015). The rule is fixed and disclosed on purpose:
  * ARCHITECTURE section 1 rules out an algorithmic feed.
  *
  * The age is counted back from the start of the week, not from now, so an
@@ -13,7 +14,7 @@ import { siteLabel } from "@/lib/trash";
  * was saved at least this long ago.
  */
 export const BACKLOG_MIN_AGE_DAYS = 14;
-/** read_progress at or above this counts as finished. */
+/** read_progress at or above this stamps read_at: finished, for good. */
 export const BACKLOG_FINISHED = 0.9;
 export const BACKLOG_SIZE = 3;
 /**

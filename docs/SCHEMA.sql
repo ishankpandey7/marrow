@@ -1254,11 +1254,13 @@ grant update (revoked_at) on public.extension_tokens to authenticated;
 grant all on table public.extension_tokens to service_role;
 
 -- ----------------------------------------------------------------------------
--- backlog_strip — "From your backlog" on /inbox (Slice 13; 0012, then 0013).
+-- backlog_strip — "From your backlog" on /inbox (Slice 13; 0012, 0013, 0016).
 --
 -- Up to three ready articles saved at least p_min_age_days before the start
--- of the week, not archived, not in Trash, less than 90% read, and not put
--- off with Not now (resurface_after) as of the week's start. The rule is
+-- of the week, not archived, not in Trash, never finished, and not put off
+-- with Not now (resurface_after) as of the week's start. "Never finished" is
+-- read_at is null (0016): read_progress falls again when a finished article
+-- is scrolled back up, and real 0.9 lost to the numeric literal 0.9. The rule is
 -- fixed and shown on the strip: ARCHITECTURE section 1 rules out an
 -- algorithmic feed. lib/backlog.ts holds the minimum age and passes it.
 --
@@ -1295,7 +1297,7 @@ as $$
    where i.status = 'ready'
      and i.deleted_at is null
      and i.archived_at is null
-     and i.read_progress < 0.9
+     and i.read_at is null
      and i.created_at <= week.starts - make_interval(days => p_min_age_days)
      and (i.resurface_after is null or i.resurface_after <= week.starts)
    order by md5(p_week || ':' || i.id::text), i.id
